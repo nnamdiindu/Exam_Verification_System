@@ -153,9 +153,11 @@ def index():
 
     return render_template("index.html", stats=stats, recent_verifications=recent_verifications)
 
+
 @app.route("/enrollment")
 def enrollment():
     return render_template("enrollment.html")
+
 
 @app.route("/api/lookup-student", methods=["POST"])
 def lookup_student():
@@ -185,13 +187,127 @@ def lookup_student():
         "fingerprint_count": len(student.fingerprints)
     })
 
+
 @app.route("/verification")
 def verification():
-    return render_template("verification.html")
+    # Live verification page
+    active_exams = db.session.execute(
+        select(Exam).where(
+            Exam.status.in_(["scheduled", "active"])
+        ).order_by(Exam.exam_date, Exam.start_time)
+    ).scalars().all()
 
-@app.route("/exam_management")
+    return render_template("verification.html", active_exams=active_exams)
+
+
+@app.route("/exams")
 def exam_management():
-    return render_template("exam_management.html")
+    exams = Exam.query.order_by(Exam.exam_date.desc()).all()
+
+    # Add registration counts
+    exam_data = []
+    for exam in exams:
+        registered_count = ExamRegistration.query.filter_by(exam_id=exam.id).count()
+        verified_count = VerificationAttempt.query.filter_by(
+            exam_id=exam.id, verification_status='success'
+        ).count()
+
+        exam_data.append({
+            'exam': exam,
+            'registered_count': registered_count,
+            'verified_count': verified_count
+        })
+
+    return render_template('exam_management.html', exam_data=exam_data)
+
+
+
+@app.route('/api/create-exam', methods=['POST'])
+def create_exam():
+    """Create new exam"""
+    try:
+        data = request.json
+
+        exam = Exam(
+            exam_code=data['exam_code'],
+            exam_title=data['exam_title'],
+            exam_date=datetime.strptime(data['exam_date'], '%Y-%m-%d').date(),
+            start_time=datetime.strptime(data['start_time'], '%H:%M').time(),
+            venue=data.get('venue', ''),
+            duration_minutes=int(data.get('duration_minutes', 180))
+        )
+
+        db.session.add(exam)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Exam created successfully',
+            'exam_id': exam.id
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/update-exam-status/<int:exam_id>', methods=['POST'])
+def update_exam_status(exam_id):
+    """Update exam status"""
+    try:
+        new_status = request.json.get('status')
+
+        exam = Exam.query.get(exam_id)
+        if not exam:
+            return jsonify({'error': 'Exam not found'}), 404
+
+        exam.status = new_status
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Exam status updated to {new_status}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/register-student-for-exam', methods=['POST'])
+def register_student_for_exam():
+    """Register student for an exam"""
+    try:
+        data = request.json
+        student_id = data.get('student_id')
+        exam_id = data.get('exam_id')
+
+        # Check if already registered
+        existing = ExamRegistration.query.filter_by(
+            student_id=student_id, exam_id=exam_id
+        ).first()
+
+        if existing:
+            return jsonify({'error': 'Student already registered for this exam'}), 400
+
+        registration = ExamRegistration(
+            student_id=student_id,
+            exam_id=exam_id,
+            seat_number=data.get('seat_number')
+        )
+
+        db.session.add(registration)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Student registered successfully'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)
