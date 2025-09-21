@@ -45,28 +45,119 @@
         <div class="col-md-6">
             <div class="card">
                 <div class="card-header">
-                    <h5>Fingerprint Scanner</h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5>Fingerprint Scanner</h5>
+                        <div id="scannerStatus">
+                            <span class="badge bg-secondary">Checking...</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body text-center">
                     <div class="fingerprint-scanner" id="scanner" onclick="startScanning()">
                         <i class="fas fa-fingerprint fa-4x text-muted" id="scannerIcon"></i>
                     </div>
-                    <p class="text-muted">Click to capture fingerprint</p>
+                    <p class="text-muted" id="scannerInstructions">Click to capture fingerprint</p>
                     <div id="scanStatus" class="mt-3"></div>
-                    <button type="button" class="btn btn-success" id="enrollBtn" onclick="enrollFingerprint()" disabled>
-                        <i class="fas fa-save me-2"></i>Enroll Fingerprint
-                    </button>
+                    
+                    <div class="d-flex gap-2 justify-content-center mt-3">
+                        <button type="button" class="btn btn-info" id="hwCaptureBtn" onclick="captureFromHardware()" disabled>
+                            <i class="fas fa-camera me-2"></i>Capture from Scanner
+                        </button>
+                        <button type="button" class="btn btn-success" id="enrollBtn" onclick="enrollFingerprint()" disabled>
+                            <i class="fas fa-save me-2"></i>Enroll Fingerprint
+                        </button>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="autoScanBtn" onclick="toggleAutoScan()" disabled>
+                            <i class="fas fa-play me-2"></i>Start Auto Scan
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<style>
+.fingerprint-scanner {
+    width: 200px;
+    height: 200px;
+    border: 3px dashed #ccc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 20px auto;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.fingerprint-scanner:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.fingerprint-scanner.scanning {
+    border-color: #007bff;
+    background-color: #e3f2fd;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.scanner-connected {
+    border-color: #28a745;
+}
+
+.scanner-error {
+    border-color: #dc3545;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let currentStudent = null;
 let capturedFingerprint = null;
+let scannerConnected = false;
+let autoScanActive = false;
+
+// Check scanner status on page load
+async function checkScannerStatus() {
+    try {
+        const response = await fetch('/api/scanner/status');
+        const data = await response.json();
+        scannerConnected = data.connected;
+        
+        const statusElement = document.getElementById('scannerStatus');
+        const instructionsElement = document.getElementById('scannerInstructions');
+        const hwCaptureBtn = document.getElementById('hwCaptureBtn');
+        const autoScanBtn = document.getElementById('autoScanBtn');
+        const scanner = document.getElementById('scanner');
+        
+        if (scannerConnected) {
+            statusElement.innerHTML = `<span class="badge bg-success">Connected: ${data.scanner_type}</span>`;
+            instructionsElement.textContent = 'Hardware scanner connected - Click "Capture from Scanner" or use Auto Scan';
+            hwCaptureBtn.disabled = false;
+            autoScanBtn.disabled = false;
+            scanner.classList.add('scanner-connected');
+        } else {
+            statusElement.innerHTML = '<span class="badge bg-danger">No Scanner Connected</span>';
+            instructionsElement.textContent = 'No hardware scanner - Click fingerprint icon for demo mode';
+            hwCaptureBtn.disabled = true;
+            autoScanBtn.disabled = true;
+            scanner.classList.remove('scanner-connected');
+        }
+    } catch (error) {
+        console.error('Error checking scanner status:', error);
+        document.getElementById('scannerStatus').innerHTML = '<span class="badge bg-warning">Status Unknown</span>';
+    }
+}
 
 function lookupStudent() {
     const regNumber = document.getElementById('regNumber').value;
@@ -100,30 +191,165 @@ function lookupStudent() {
     });
 }
 
+// Capture from hardware scanner
+async function captureFromHardware() {
+    if (!scannerConnected) {
+        alert('No biometric scanner connected');
+        return;
+    }
+    
+    if (!currentStudent) {
+        alert('Please lookup a student first');
+        return;
+    }
+    
+    updateScannerUI('scanning', 'Capturing from hardware scanner...');
+    
+    try {
+        const response = await fetch('/api/scanner/capture', {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            capturedFingerprint = data.fingerprint_data;
+            updateScannerUI('success', 'Hardware capture successful!');
+            document.getElementById('enrollBtn').disabled = false;
+        } else {
+            updateScannerUI('error', 'Hardware capture failed: ' + data.error);
+        }
+    } catch (error) {
+        updateScannerUI('error', 'Error capturing from scanner: ' + error);
+    }
+}
+
+// Fallback demo scanning (original functionality)
 function startScanning() {
     if (!currentStudent) {
         alert('Please lookup a student first');
         return;
     }
     
-    const scanner = document.getElementById('scanner');
-    const icon = document.getElementById('scannerIcon');
-    const status = document.getElementById('scanStatus');
+    // If hardware scanner is connected, suggest using that instead
+    if (scannerConnected) {
+        const useHardware = confirm('Hardware scanner detected. Would you like to use the hardware scanner instead of demo mode?');
+        if (useHardware) {
+            captureFromHardware();
+            return;
+        }
+    }
     
-    scanner.classList.add('scanning');
-    icon.className = 'fas fa-spinner fa-spin fa-4x text-primary';
-    status.innerHTML = '<div class="text-primary">Scanning fingerprint...</div>';
+    updateScannerUI('scanning', 'Demo mode: Simulating fingerprint capture...');
     
-    // Simulate fingerprint capture
+    // Simulate fingerprint capture (original functionality)
     setTimeout(() => {
-        scanner.classList.remove('scanning');
-        icon.className = 'fas fa-fingerprint fa-4x text-success';
-        status.innerHTML = '<div class="text-success"><i class="fas fa-check-circle me-2"></i>Fingerprint captured successfully</div>';
-        
-        // Generate mock fingerprint data
-        capturedFingerprint = btoa('mock_fingerprint_data_' + Date.now());
+        capturedFingerprint = btoa('demo_fingerprint_data_' + Date.now());
+        updateScannerUI('success', 'Demo fingerprint captured successfully');
         document.getElementById('enrollBtn').disabled = false;
     }, 3000);
+}
+
+// Toggle auto-scan mode
+async function toggleAutoScan() {
+    if (!scannerConnected) {
+        alert('Auto-scan requires a hardware scanner');
+        return;
+    }
+    
+    if (!currentStudent) {
+        alert('Please lookup a student first');
+        return;
+    }
+    
+    const autoScanBtn = document.getElementById('autoScanBtn');
+    
+    try {
+        if (!autoScanActive) {
+            const response = await fetch('/api/scanner/start-auto', {
+                method: 'POST'
+            });
+            if (response.ok) {
+                autoScanActive = true;
+                autoScanBtn.innerHTML = '<i class="fas fa-stop me-2"></i>Stop Auto Scan';
+                autoScanBtn.classList.remove('btn-outline-primary');
+                autoScanBtn.classList.add('btn-warning');
+                updateScannerUI('auto-scan', 'Auto-scan active - place finger on scanner');
+                
+                // Start checking for auto-captured data
+                startAutoScanPolling();
+            }
+        } else {
+            const response = await fetch('/api/scanner/stop-auto', {
+                method: 'POST'
+            });
+            if (response.ok) {
+                autoScanActive = false;
+                autoScanBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Auto Scan';
+                autoScanBtn.classList.remove('btn-warning');
+                autoScanBtn.classList.add('btn-outline-primary');
+                updateScannerUI('ready', 'Auto-scan stopped');
+                stopAutoScanPolling();
+            }
+        }
+    } catch (error) {
+        console.error('Error toggling auto scan:', error);
+    }
+}
+
+// Auto-scan polling (simplified - in production you'd use WebSockets)
+let autoScanInterval;
+
+function startAutoScanPolling() {
+    autoScanInterval = setInterval(() => {
+        // In a real implementation, this would check for new auto-captured data
+        // via WebSocket or server-sent events
+        console.log('Checking for auto-captured fingerprint...');
+    }, 1000);
+}
+
+function stopAutoScanPolling() {
+    if (autoScanInterval) {
+        clearInterval(autoScanInterval);
+        autoScanInterval = null;
+    }
+}
+
+function updateScannerUI(status, message) {
+    const scanner = document.getElementById('scanner');
+    const icon = document.getElementById('scannerIcon');
+    const statusDiv = document.getElementById('scanStatus');
+    
+    // Reset classes
+    scanner.classList.remove('scanning', 'scanner-error');
+    
+    switch (status) {
+        case 'scanning':
+            scanner.classList.add('scanning');
+            icon.className = 'fas fa-spinner fa-spin fa-4x text-primary';
+            statusDiv.innerHTML = `<div class="text-primary">${message}</div>`;
+            break;
+        case 'success':
+            icon.className = 'fas fa-check-circle fa-4x text-success';
+            statusDiv.innerHTML = `<div class="text-success"><i class="fas fa-check-circle me-2"></i>${message}</div>`;
+            break;
+        case 'error':
+            scanner.classList.add('scanner-error');
+            icon.className = 'fas fa-exclamation-triangle fa-4x text-danger';
+            statusDiv.innerHTML = `<div class="text-danger"><i class="fas fa-exclamation-triangle me-2"></i>${message}</div>`;
+            break;
+        case 'auto-scan':
+            scanner.classList.add('scanning');
+            icon.className = 'fas fa-fingerprint fa-4x text-info';
+            statusDiv.innerHTML = `<div class="text-info"><i class="fas fa-sync fa-spin me-2"></i>${message}</div>`;
+            break;
+        case 'ready':
+            icon.className = scannerConnected ? 'fas fa-fingerprint fa-4x text-success' : 'fas fa-fingerprint fa-4x text-muted';
+            statusDiv.innerHTML = `<div class="text-muted">${message}</div>`;
+            break;
+        default:
+            icon.className = 'fas fa-fingerprint fa-4x text-muted';
+            statusDiv.innerHTML = '';
+    }
 }
 
 function enrollFingerprint() {
@@ -131,6 +357,10 @@ function enrollFingerprint() {
         alert('Please capture a fingerprint first');
         return;
     }
+    
+    const enrollBtn = document.getElementById('enrollBtn');
+    enrollBtn.disabled = true;
+    enrollBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enrolling...';
     
     fetch('/api/enroll-fingerprint', {
         method: 'POST',
@@ -143,23 +373,50 @@ function enrollFingerprint() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert(`Fingerprint enrolled successfully! Quality: ${data.quality_score.toFixed(1)}%`);
-            // Reset form
-            document.getElementById('studentForm').reset();
-            document.getElementById('studentInfo').style.display = 'none';
-            document.getElementById('scanStatus').innerHTML = '';
-            document.getElementById('scanner').classList.remove('scanning');
-            document.getElementById('scannerIcon').className = 'fas fa-fingerprint fa-4x text-muted';
-            document.getElementById('enrollBtn').disabled = true;
-            currentStudent = null;
-            capturedFingerprint = null;
+            alert(`Fingerprint enrolled successfully!\nQuality: ${data.quality_score.toFixed(1)}%\nFeatures: ${data.feature_count}`);
+            resetForm();
         } else {
             alert('Error: ' + data.error);
         }
     })
     .catch(error => {
         alert('Error enrolling fingerprint: ' + error);
+    })
+    .finally(() => {
+        enrollBtn.disabled = false;
+        enrollBtn.innerHTML = '<i class="fas fa-save me-2"></i>Enroll Fingerprint';
     });
 }
+
+function resetForm() {
+    // Reset form
+    document.getElementById('studentForm').reset();
+    document.getElementById('studentInfo').style.display = 'none';
+    updateScannerUI('ready', 'Form reset - ready for next enrollment');
+    document.getElementById('enrollBtn').disabled = true;
+    
+    // Stop auto-scan if active
+    if (autoScanActive) {
+        toggleAutoScan();
+    }
+    
+    currentStudent = null;
+    capturedFingerprint = null;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    checkScannerStatus();
+    
+    // Refresh scanner status every 30 seconds
+    setInterval(checkScannerStatus, 30000);
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (autoScanActive) {
+        fetch('/api/scanner/stop-auto', {method: 'POST'});
+    }
+});
 </script>
 {% endblock %}

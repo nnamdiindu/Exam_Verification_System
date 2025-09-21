@@ -28,12 +28,16 @@ app.secret_key = os.environ.get("SECRET_KEY")
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 
+
 class Base(DeclarativeBase):
     pass
+
 
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
+
+# Your existing models remain unchanged
 class Student(db.Model):
     __tablename__ = "students"
 
@@ -41,13 +45,12 @@ class Student(db.Model):
     registration_number: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email:Mapped[Optional[str]] = mapped_column(String(255))
+    email: Mapped[Optional[str]] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     department: Mapped[Optional[str]] = mapped_column(String(100))
 
-    # relationships
     fingerprints: Mapped[List["FingerprintTemplate"]] = relationship(back_populates="student",
-                                                      lazy="select", cascade="all, delete-orphan")
+                                                                     lazy="select", cascade="all, delete-orphan")
     registrations: Mapped[List["ExamRegistration"]] = relationship(back_populates="student", lazy="select")
 
     @property
@@ -58,6 +61,7 @@ class Student(db.Model):
     def has_fingerprint(self):
         return len(self.fingerprints) > 0
 
+
 class FingerprintTemplate(db.Model):
     __tablename__ = "fingerprint_templates"
 
@@ -65,15 +69,16 @@ class FingerprintTemplate(db.Model):
     student_id: Mapped[int] = mapped_column(Integer, ForeignKey("students.id"), nullable=False)
     template_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     template_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    enrollment_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda : datetime.now(timezone.utc))
+    enrollment_date: Mapped[datetime] = mapped_column(DateTime, nullable=False,
+                                                      default=lambda: datetime.now(timezone.utc))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     quality_score: Mapped[Decimal] = mapped_column(Numeric(5, 2))
 
-    # Relationships
     student: Mapped["Student"] = relationship(back_populates="fingerprints")
     verification_attempts: Mapped[List["VerificationAttempt"]] = relationship(
         back_populates="matched_template"
     )
+
 
 class Exam(db.Model):
     __tablename__ = "exams"
@@ -85,10 +90,9 @@ class Exam(db.Model):
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
     venue: Mapped[Optional[str]] = mapped_column(String(255))
     duration_minutes: Mapped[int] = mapped_column(Integer, default=180)
-    status: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled, active, completed
+    status: Mapped[str] = mapped_column(String(20), default="scheduled")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # Relationships
     registrations: Mapped[List["ExamRegistration"]] = relationship(back_populates="exam", lazy="select")
     verifications: Mapped[List["VerificationAttempt"]] = relationship(back_populates="exam", lazy="select")
 
@@ -102,7 +106,6 @@ class ExamRegistration(db.Model):
     registration_date: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     seat_number: Mapped[str | None] = mapped_column(String(20))
 
-    # Relationships
     student: Mapped["Student"] = relationship(back_populates="registrations")
     exam: Mapped[Exam] = relationship(back_populates="registrations")
 
@@ -112,18 +115,21 @@ class VerificationAttempt(db.Model):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), nullable=False)
-    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id"), nullable=True)  # Null if failed
+    student_id: Mapped[int | None] = mapped_column(ForeignKey("students.id"), nullable=True)
     verification_timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    verification_status: Mapped[str] = mapped_column(String(20), nullable=False)  # success, failed
+    verification_status: Mapped[str] = mapped_column(String(20), nullable=False)
     confidence_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     template_matched: Mapped[int | None] = mapped_column(ForeignKey("fingerprint_templates.id"))
 
-    # Relationships
     exam: Mapped["Exam"] = relationship(back_populates="verifications")
-    student: Mapped[Optional["Student"]] = relationship()  # No back_populates since it's optional
+    student: Mapped[Optional["Student"]] = relationship()
     matched_template: Mapped[Optional["FingerprintTemplate"]] = relationship(
         back_populates="verification_attempts")
 
+
+# ================================
+# BIOMETRIC SCANNER INTEGRATION
+# ================================
 
 class BiometricScannerInterface:
     """Base interface for biometric scanner integration"""
@@ -423,16 +429,10 @@ class ScannerManager:
 scanner_manager = ScannerManager()
 
 
+# Your existing OpenCV fingerprint processor remains unchanged
 class OpenCVFingerprintProcessor:
-    """
-    Fingerprint processing using OpenCV for image processing and feature extraction
-    """
-
     def __init__(self):
-        # Initialize ORB detector for feature extraction
         self.orb = cv2.ORB_create(nfeatures=500)
-
-        # Initialize FLANN matcher for feature matching
         FLANN_INDEX_LSH = 6
         index_params = dict(algorithm=FLANN_INDEX_LSH,
                             table_number=6,
@@ -442,91 +442,45 @@ class OpenCVFingerprintProcessor:
         self.flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     def preprocess_image(self, image_data: bytes) -> np.ndarray:
-        """
-        Preprocess fingerprint image for better feature extraction
-        """
-        # Convert bytes to numpy array
         nparr = np.frombuffer(image_data, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
-
         if image is None:
             raise ValueError("Invalid image data")
-
-        # Resize image to standard size
         image = cv2.resize(image, (256, 256))
-
-        # Apply histogram equalization to improve contrast
         image = cv2.equalizeHist(image)
-
-        # Apply Gaussian blur to reduce noise
         image = cv2.GaussianBlur(image, (3, 3), 0)
-
-        # Apply morphological operations to enhance ridges
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
-
         return image
 
     def extract_features(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Extract keypoints and descriptors from preprocessed fingerprint image
-        """
-        # Detect keypoints and compute descriptors
         keypoints, descriptors = self.orb.detectAndCompute(image, None)
-
         if descriptors is None:
             raise ValueError("No features could be extracted from the image")
-
-        # Convert keypoints to serializable format
         keypoints_data = []
         for kp in keypoints:
             keypoints_data.append({
-                'x': float(kp.pt[0]),
-                'y': float(kp.pt[1]),
-                'angle': float(kp.angle),
-                'response': float(kp.response),
-                'octave': int(kp.octave),
-                'size': float(kp.size)
+                'x': float(kp.pt[0]), 'y': float(kp.pt[1]),
+                'angle': float(kp.angle), 'response': float(kp.response),
+                'octave': int(kp.octave), 'size': float(kp.size)
             })
-
         return keypoints_data, descriptors
 
     def calculate_quality_score(self, image: np.ndarray, keypoints: List[Dict]) -> float:
-        """
-        Calculate quality score based on image properties and feature count
-        """
-        # Image contrast (standard deviation of pixel intensities)
         contrast = np.std(image)
-        contrast_score = min(contrast / 50.0, 1.0)  # Normalize to 0-1
-
-        # Feature density (number of keypoints per area)
+        contrast_score = min(contrast / 50.0, 1.0)
         area = image.shape[0] * image.shape[1]
-        density = len(keypoints) / (area / 10000)  # Per 100x100 pixel area
-        density_score = min(density / 5.0, 1.0)  # Normalize to 0-1
-
-        # Image sharpness using Laplacian variance
+        density = len(keypoints) / (area / 10000)
+        density_score = min(density / 5.0, 1.0)
         laplacian_var = cv2.Laplacian(image, cv2.CV_64F).var()
-        sharpness_score = min(laplacian_var / 1000.0, 1.0)  # Normalize to 0-1
-
-        # Combined quality score (weighted average)
+        sharpness_score = min(laplacian_var / 1000.0, 1.0)
         quality = (contrast_score * 0.3 + density_score * 0.4 + sharpness_score * 0.3) * 100
-
-        return max(30.0, min(95.0, quality))  # Ensure score is between 30-95%
+        return max(30.0, min(95.0, quality))
 
     def create_template(self, image_data: bytes) -> Dict[str, Any]:
-        """
-        Create fingerprint template from image data
-        """
-        # Preprocess image
         processed_image = self.preprocess_image(image_data)
-
-        # Extract features
         keypoints, descriptors = self.extract_features(processed_image)
-
-        # Calculate quality score
         quality_score = self.calculate_quality_score(processed_image, keypoints)
-
-        # Create template
         template = {
             'keypoints': keypoints,
             'descriptors': descriptors.tolist(),
@@ -535,74 +489,46 @@ class OpenCVFingerprintProcessor:
             'feature_count': len(keypoints),
             'created_at': datetime.now(timezone.utc).isoformat()
         }
-
         return template
 
     def match_templates(self, template1: Dict[str, Any], template2: Dict[str, Any]) -> float:
-        """
-        Match two fingerprint templates and return confidence score
-        """
         try:
-            # Convert descriptors back to numpy arrays
             desc1 = np.array(template1['descriptors'], dtype=np.uint8)
             desc2 = np.array(template2['descriptors'], dtype=np.uint8)
-
-            # Ensure we have enough descriptors for matching
             if len(desc1) < 10 or len(desc2) < 10:
                 return 0.0
-
-            # Match descriptors using FLANN
             matches = self.flann.knnMatch(desc1, desc2, k=2)
-
-            # Apply Lowe's ratio test to filter good matches
             good_matches = []
             for match_pair in matches:
                 if len(match_pair) == 2:
                     m, n = match_pair
                     if m.distance < 0.7 * n.distance:
                         good_matches.append(m)
-
-            # Calculate confidence based on number of good matches
             match_ratio = len(good_matches) / min(len(desc1), len(desc2))
             confidence = min(match_ratio * 100, 95.0)
-
-            # Additional validation based on spatial consistency
             if len(good_matches) >= 10:
                 kp1 = template1['keypoints']
                 kp2 = template2['keypoints']
-
-                # Get matched keypoint coordinates
-                src_pts = np.float32([kp1[m.queryIdx]['x'], kp1[m.queryIdx]['y']]
-                                     for m in good_matches).reshape(-1, 1, 2)
-                dst_pts = np.float32([kp2[m.trainIdx]['x'], kp2[m.trainIdx]['y']]
-                                     for m in good_matches).reshape(-1, 1, 2)
-
-                # Find homography to validate spatial consistency
+                src_pts = np.float32([[kp1[m.queryIdx]['x'], kp1[m.queryIdx]['y']]
+                                      for m in good_matches]).reshape(-1, 1, 2)
+                dst_pts = np.float32([[kp2[m.trainIdx]['x'], kp2[m.trainIdx]['y']]
+                                      for m in good_matches]).reshape(-1, 1, 2)
                 if len(src_pts) >= 4:
-                    _, mask = cv2.findHomography(src_pts, dst_pts,
-                                                 cv2.RANSAC, 5.0)
+                    _, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
                     if mask is not None:
                         inliers = np.sum(mask)
                         spatial_consistency = inliers / len(mask)
                         confidence *= spatial_consistency
-
             return confidence
-
         except Exception as e:
-            print(f"Error matching templates: {e}")
+            logging.error(f"Error matching templates: {e}")
             return 0.0
 
     def encode_template(self, template: Dict[str, Any]) -> bytes:
-        """
-        Encode template to bytes for database storage
-        """
         template_json = json.dumps(template, ensure_ascii=False)
         return template_json.encode('utf-8')
 
     def decode_template(self, template_bytes: bytes) -> Dict[str, Any]:
-        """
-        Decode template from bytes
-        """
         template_json = template_bytes.decode('utf-8')
         return json.loads(template_json)
 
@@ -627,6 +553,7 @@ def initialize_scanners():
     return any(results.values())
 
 
+# Initialize database and scanners
 with app.app_context():
     db.create_all()
 
@@ -640,6 +567,9 @@ def setup_scanners():
         logging.warning("No biometric scanners connected - using mock mode")
 
 
+# ================================
+# NEW SCANNER API ROUTES
+# ================================
 
 @app.route('/api/scanner/status')
 def scanner_status():
@@ -684,40 +614,24 @@ def stop_auto_scan():
     return jsonify({'success': True, 'message': 'Auto-scan stopped'})
 
 
+# ================================
+# YOUR EXISTING ROUTES (UPDATED)
+# ================================
+
 @app.route("/")
 def index():
-    #Main Dashboard
     stats = {
-        'total_students': db.session.execute(
-            select(func.count()).select_from(Student)
-        ).scalar(),
-
+        'total_students': db.session.execute(select(func.count()).select_from(Student)).scalar(),
         'enrolled_fingerprints': db.session.execute(
-            select(func.count(distinct(FingerprintTemplate.student_id)))
-        ).scalar(),
-
-        'total_exams': db.session.execute(
-            select(func.count()).select_from(Exam)
-        ).scalar(),
-
+            select(func.count(distinct(FingerprintTemplate.student_id)))).scalar(),
+        'total_exams': db.session.execute(select(func.count()).select_from(Exam)).scalar(),
         'active_exams': db.session.execute(
-            select(func.count()).select_from(Exam).where(Exam.status == 'active')
-        ).scalar()
+            select(func.count()).select_from(Exam).where(Exam.status == 'active')).scalar()
     }
-
-    # Recent verifications query
-    stmt = select(
-        VerificationAttempt,
-        Student.registration_number,
-        Student.first_name,
-        Student.last_name,
-        Exam.exam_code
-    ).outerjoin(Student).join(Exam).order_by(
-        VerificationAttempt.verification_timestamp.desc()
-    ).limit(5)
-
+    stmt = select(VerificationAttempt, Student.registration_number, Student.first_name, Student.last_name,
+                  Exam.exam_code).outerjoin(Student).join(Exam).order_by(
+        VerificationAttempt.verification_timestamp.desc()).limit(5)
     recent_verifications = db.session.execute(stmt).all()
-
     return render_template("index.html", stats=stats, recent_verifications=recent_verifications)
 
 
@@ -728,22 +642,12 @@ def enrollment():
 
 @app.route("/api/lookup-student", methods=["POST"])
 def lookup_student():
-    # Look up student by registration number
     reg_number = request.json.get("registration_number")
-
     if not reg_number:
-        return jsonify({
-            "error": "Registration number required"
-        }), 400
-
-    # student = Student.query.filter_by(registration_number=reg_number).first()
+        return jsonify({"error": "Registration number required"}), 400
     student = db.session.execute(select(Student).where(Student.registration_number == reg_number)).scalar()
-
     if not student:
-        return jsonify({
-            "error": "Student not found"
-        }), 404
-
+        return jsonify({"error": "Student not found"}), 404
     return jsonify({
         "id": student.id,
         "registration_number": student.registration_number,
@@ -757,9 +661,7 @@ def lookup_student():
 
 @app.route("/api/enroll-fingerprint", methods=["POST"])
 def enroll_fingerprint():
-    """
-    Enroll fingerprint using OpenCV processing
-    """
+    """Enroll fingerprint using OpenCV processing"""
     try:
         data = request.json
         student_id = data.get('student_id')
@@ -768,12 +670,10 @@ def enroll_fingerprint():
         if not student_id or not fingerprint_data:
             return jsonify({'error': 'Student ID and fingerprint data required'}), 400
 
-        # Get student
         student = db.session.get(Student, student_id)
         if not student:
             return jsonify({'error': 'Student not found'}), 404
 
-        # Check if student already has fingerprint enrolled
         existing_template = db.session.execute(
             select(FingerprintTemplate).where(
                 FingerprintTemplate.student_id == student_id,
@@ -784,37 +684,29 @@ def enroll_fingerprint():
         if existing_template:
             return jsonify({'error': 'Student already has fingerprint enrolled'}), 400
 
-        # Decode base64 image data
         try:
             image_bytes = base64.b64decode(fingerprint_data)
         except Exception:
             return jsonify({'error': 'Invalid fingerprint image data'}), 400
 
-        # Process fingerprint and create template
         template = fp_processor.create_template(image_bytes)
 
-        # Check quality threshold
         if template['quality_score'] < 40.0:
             return jsonify({
                 'error': 'Fingerprint quality too low. Please try again.',
                 'quality_score': template['quality_score']
             }), 400
 
-        # Create template hash for deduplication
         template_bytes = fp_processor.encode_template(template)
         template_hash = hashlib.sha256(template_bytes).hexdigest()
 
-        # Check for duplicate templates
         duplicate = db.session.execute(
-            select(FingerprintTemplate).where(
-                FingerprintTemplate.template_hash == template_hash
-            )
+            select(FingerprintTemplate).where(FingerprintTemplate.template_hash == template_hash)
         ).scalar()
 
         if duplicate:
             return jsonify({'error': 'This fingerprint is already enrolled'}), 400
 
-        # Save template to database
         fingerprint_template = FingerprintTemplate(
             student_id=student_id,
             template_data=template_bytes,
@@ -837,24 +729,17 @@ def enroll_fingerprint():
         return jsonify({'error': f'Enrollment failed: {str(e)}'}), 500
 
 
-
 @app.route("/verification")
 def verification():
-    # Live verification page
     active_exams = db.session.execute(
-        select(Exam).where(
-            Exam.status.in_(["scheduled", "active"])
-        ).order_by(Exam.exam_date, Exam.start_time)
+        select(Exam).where(Exam.status.in_(["scheduled", "active"])).order_by(Exam.exam_date, Exam.start_time)
     ).scalars().all()
-
     return render_template("verification.html", active_exams=active_exams)
 
 
 @app.route("/api/verify-fingerprint", methods=["POST"])
 def verify_fingerprint():
-    """
-    Verify fingerprint against enrolled templates
-    """
+    """Verify fingerprint against enrolled templates"""
     try:
         data = request.json
         exam_id = data.get('exam_id')
@@ -863,18 +748,15 @@ def verify_fingerprint():
         if not exam_id or not fingerprint_data:
             return jsonify({'error': 'Exam ID and fingerprint data required'}), 400
 
-        # Get exam
         exam = db.session.get(Exam, exam_id)
         if not exam:
             return jsonify({'error': 'Exam not found'}), 404
 
-        # Decode fingerprint data
         try:
             image_bytes = base64.b64decode(fingerprint_data)
         except Exception:
             return jsonify({'error': 'Invalid fingerprint data'}), 400
 
-        # Create template for verification
         verify_template = fp_processor.create_template(image_bytes)
 
         if verify_template['quality_score'] < 30.0:
@@ -884,7 +766,6 @@ def verify_fingerprint():
                 'message': 'Poor fingerprint quality. Please try again.'
             })
 
-        # Get all enrolled templates
         enrolled_templates = db.session.execute(
             select(FingerprintTemplate).where(
                 FingerprintTemplate.is_active == True
@@ -896,7 +777,6 @@ def verify_fingerprint():
         best_match = None
         best_confidence = 0.0
 
-        # Compare against all enrolled templates
         for template_record in enrolled_templates:
             stored_template = fp_processor.decode_template(template_record.template_data)
             confidence = fp_processor.match_templates(verify_template, stored_template)
@@ -905,11 +785,9 @@ def verify_fingerprint():
                 best_confidence = confidence
                 best_match = template_record
 
-        # Verification threshold
         VERIFICATION_THRESHOLD = 60.0
 
         if best_match and best_confidence >= VERIFICATION_THRESHOLD:
-            # Check for duplicate verification
             existing_verification = db.session.execute(
                 select(VerificationAttempt).where(
                     VerificationAttempt.exam_id == exam_id,
@@ -925,7 +803,6 @@ def verify_fingerprint():
                     'message': f'Student {best_match.student.full_name} already verified for this exam'
                 })
 
-            # Record successful verification
             verification = VerificationAttempt(
                 exam_id=exam_id,
                 student_id=best_match.student_id,
@@ -947,7 +824,6 @@ def verify_fingerprint():
                 'confidence': best_confidence
             })
         else:
-            # Record failed verification
             verification = VerificationAttempt(
                 exam_id=exam_id,
                 student_id=None,
@@ -973,33 +849,28 @@ def verify_fingerprint():
         }), 500
 
 
+# Your existing exam management routes
 @app.route("/exams")
 def exam_management():
     exams = Exam.query.order_by(Exam.exam_date.desc()).all()
-
-    # Add registration counts
     exam_data = []
     for exam in exams:
         registered_count = ExamRegistration.query.filter_by(exam_id=exam.id).count()
         verified_count = VerificationAttempt.query.filter_by(
             exam_id=exam.id, verification_status='success'
         ).count()
-
         exam_data.append({
             'exam': exam,
             'registered_count': registered_count,
             'verified_count': verified_count
         })
-
     return render_template('exam_management.html', exam_data=exam_data)
 
 
 @app.route('/api/create-exam', methods=['POST'])
 def create_exam():
-    """Create new exam"""
     try:
         data = request.json
-
         exam = Exam(
             exam_code=data['exam_code'],
             exam_title=data['exam_title'],
@@ -1008,16 +879,13 @@ def create_exam():
             venue=data.get('venue', ''),
             duration_minutes=int(data.get('duration_minutes', 180))
         )
-
         db.session.add(exam)
         db.session.commit()
-
         return jsonify({
             'success': True,
             'message': 'Exam created successfully',
             'exam_id': exam.id
         })
-
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -1025,22 +893,17 @@ def create_exam():
 
 @app.route('/api/update-exam-status/<int:exam_id>', methods=['POST'])
 def update_exam_status(exam_id):
-    """Update exam status"""
     try:
         new_status = request.json.get('status')
-
         exam = Exam.query.get(exam_id)
         if not exam:
             return jsonify({'error': 'Exam not found'}), 404
-
         exam.status = new_status
         db.session.commit()
-
         return jsonify({
             'success': True,
             'message': f'Exam status updated to {new_status}'
         })
-
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
@@ -1048,13 +911,11 @@ def update_exam_status(exam_id):
 
 @app.route('/api/register-student-for-exam', methods=['POST'])
 def register_student_for_exam():
-    """Register student for an exam"""
     try:
         data = request.json
         student_id = data.get('student_id')
         exam_id = data.get('exam_id')
 
-        # Check if already registered
         existing = ExamRegistration.query.filter_by(
             student_id=student_id, exam_id=exam_id
         ).first()
@@ -1089,20 +950,23 @@ def cleanup_scanners(error):
         logging.error(f"App error: {error}")
     # Don't disconnect scanners on every request - only on actual shutdown
 
+
 def shutdown_scanners():
     """Call this on application shutdown"""
     scanner_manager.stop_auto_scan()
     scanner_manager.disconnect_all()
     logging.info("All scanners disconnected")
 
+
 if __name__ == "__main__":
-    try:
-        app.run(debug=True, host='0.0.0.0', port=5000)
-    except KeyboardInterrupt:
-        logging.info("Shutting down application...")
-        shutdown_scanners()
-    except Exception as e:
-        logging.error(f"Application error: {e}")
-        shutdown_scanners()
-    finally:
-        logging.info("Application shutdown complete")
+    app.run(debug=True)
+    # try:
+    #     app.run(debug=True, host='0.0.0.0', port=5000)
+    # except KeyboardInterrupt:
+    #     logging.info("Shutting down application...")
+    #     shutdown_scanners()
+    # except Exception as e:
+    #     logging.error(f"Application error: {e}")
+    #     shutdown_scanners()
+    # finally:
+    #     logging.info("Application shutdown complete")
