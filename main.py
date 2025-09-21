@@ -1,7 +1,15 @@
 import os
+import hashlib
+import base64
+import json
+import numpy as np
+import cv2
+import threading
+import time
+import logging
 from datetime import datetime, timezone, date, time
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Tuple
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify
@@ -16,6 +24,9 @@ load_dotenv()
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DB_URI")
 app.secret_key = os.environ.get("SECRET_KEY")
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 
 class Base(DeclarativeBase):
     pass
@@ -113,8 +124,564 @@ class VerificationAttempt(db.Model):
     matched_template: Mapped[Optional["FingerprintTemplate"]] = relationship(
         back_populates="verification_attempts")
 
+
+class BiometricScannerInterface:
+    """Base interface for biometric scanner integration"""
+
+    def __init__(self):
+        self.is_connected = False
+        self.last_scan_data = None
+        self.scan_callback = None
+
+    def connect(self) -> bool:
+        """Connect to the biometric scanner"""
+        raise NotImplementedError
+
+    def disconnect(self):
+        """Disconnect from the scanner"""
+        raise NotImplementedError
+
+    def capture_fingerprint(self) -> Optional[bytes]:
+        """Capture fingerprint image"""
+        raise NotImplementedError
+
+    def set_scan_callback(self, callback):
+        """Set callback for automatic scan detection"""
+        self.scan_callback = callback
+
+
+class DigitalPersonaScanner(BiometricScannerInterface):
+    """Integration for DigitalPersona scanners"""
+
+    def __init__(self):
+        super().__init__()
+        self.sdk_available = False
+        try:
+            # Try to import DigitalPersona SDK
+            # import digitalpersona
+            # self.dp_scanner = digitalpersona.Scanner()
+            # self.sdk_available = True
+            pass
+        except ImportError:
+            logging.warning("DigitalPersona SDK not installed. Install from manufacturer.")
+
+    def connect(self) -> bool:
+        if not self.sdk_available:
+            return False
+
+        try:
+            # Real implementation would be:
+            # self.dp_scanner.connect()
+            # self.is_connected = self.dp_scanner.is_connected()
+
+            # For demo purposes, simulate connection
+            self.is_connected = True
+            logging.info("DigitalPersona scanner connected")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to connect to DigitalPersona scanner: {e}")
+            return False
+
+    def capture_fingerprint(self) -> Optional[bytes]:
+        if not self.is_connected:
+            return None
+
+        try:
+            # Real implementation would be:
+            # fingerprint_image = self.dp_scanner.capture()
+            # return fingerprint_image.to_bytes()
+
+            # Return None for demo (would return actual image bytes)
+            return None
+        except Exception as e:
+            logging.error(f"Failed to capture fingerprint: {e}")
+            return None
+
+
+class FutronicScanner(BiometricScannerInterface):
+    """Integration for Futronic scanners"""
+
+    def __init__(self):
+        super().__init__()
+        self.sdk_available = False
+        try:
+            # Try to import Futronic SDK
+            # import ftrScanAPI
+            # self.futronic_device = ftrScanAPI.ftrScanAPI()
+            # self.sdk_available = True
+            pass
+        except ImportError:
+            logging.warning("Futronic SDK not installed")
+
+    def connect(self) -> bool:
+        if not self.sdk_available:
+            return False
+
+        try:
+            # Real implementation would be:
+            # result = self.futronic_device.ftrScanOpenDevice()
+            # self.is_connected = (result == ftrScanAPI.FTR_RETCODE_OK)
+
+            # Simulate connection
+            self.is_connected = True
+            logging.info("Futronic scanner connected")
+            return True
+        except Exception as e:
+            logging.error(f"Failed to connect to Futronic scanner: {e}")
+            return False
+
+    def capture_fingerprint(self) -> Optional[bytes]:
+        if not self.is_connected:
+            return None
+
+        try:
+            # Real implementation would be:
+            # image_buffer = (ftrScanAPI.UCHAR * 160000)()  # Buffer size for image
+            # result = self.futronic_device.ftrScanGetImage(4, image_buffer)
+            # if result == ftrScanAPI.FTR_RETCODE_OK:
+            #     return bytes(image_buffer)
+            return None
+        except Exception as e:
+            logging.error(f"Failed to capture fingerprint: {e}")
+            return None
+
+
+class WebcamFingerprint(BiometricScannerInterface):
+    """Use webcam as fingerprint input (for testing/demo purposes)"""
+
+    def __init__(self, camera_index=0):
+        super().__init__()
+        self.camera_index = camera_index
+        self.cap = None
+
+    def connect(self) -> bool:
+        try:
+            self.cap = cv2.VideoCapture(self.camera_index)
+            if self.cap.isOpened():
+                # Set camera properties for better fingerprint capture
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                self.cap.set(cv2.CAP_PROP_FPS, 30)
+
+                self.is_connected = True
+                logging.info("Webcam connected for fingerprint capture")
+                return True
+            return False
+        except Exception as e:
+            logging.error(f"Failed to connect to webcam: {e}")
+            return False
+
+    def disconnect(self):
+        if self.cap:
+            self.cap.release()
+        self.is_connected = False
+        logging.info("Webcam disconnected")
+
+    def capture_fingerprint(self) -> Optional[bytes]:
+        if not self.is_connected or not self.cap:
+            return None
+
+        try:
+            # Capture multiple frames and take the best quality one
+            best_frame = None
+            best_quality = 0
+
+            for _ in range(5):
+                ret, frame = self.cap.read()
+                if ret:
+                    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                    # Calculate frame quality (sharpness)
+                    quality = cv2.Laplacian(gray, cv2.CV_64F).var()
+                    if quality > best_quality:
+                        best_quality = quality
+                        best_frame = gray
+
+                time.sleep(0.1)  # Small delay between captures
+
+            if best_frame is not None:
+                # Crop to center region (assuming finger placement)
+                h, w = best_frame.shape
+                crop_size = min(h, w) // 2
+                center_x, center_y = w // 2, h // 2
+                cropped = best_frame[
+                          center_y - crop_size // 2:center_y + crop_size // 2,
+                          center_x - crop_size // 2:center_x + crop_size // 2
+                          ]
+
+                # Apply basic fingerprint enhancement
+                cropped = cv2.equalizeHist(cropped)
+
+                # Encode as PNG for better quality
+                _, buffer = cv2.imencode('.png', cropped, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+                return buffer.tobytes()
+            return None
+        except Exception as e:
+            logging.error(f"Failed to capture from webcam: {e}")
+            return None
+
+
+class ScannerManager:
+    """Manager class to handle different scanner types"""
+
+    def __init__(self):
+        self.scanners = []
+        self.active_scanner = None
+        self.auto_scan_thread = None
+        self.auto_scan_active = False
+        self.scan_lock = threading.Lock()
+
+    def add_scanner(self, scanner: BiometricScannerInterface):
+        """Add a scanner to the manager"""
+        self.scanners.append(scanner)
+        logging.info(f"Added scanner: {scanner.__class__.__name__}")
+
+    def connect_scanners(self) -> Dict[str, bool]:
+        """Try to connect to all available scanners"""
+        results = {}
+        for scanner in self.scanners:
+            scanner_name = scanner.__class__.__name__
+            results[scanner_name] = scanner.connect()
+            if results[scanner_name] and not self.active_scanner:
+                self.active_scanner = scanner
+                logging.info(f"Set {scanner_name} as active scanner")
+        return results
+
+    def get_active_scanner_info(self) -> Dict[str, Any]:
+        """Get information about the active scanner"""
+        if not self.active_scanner:
+            return {'connected': False, 'scanner_type': None}
+
+        return {
+            'connected': self.active_scanner.is_connected,
+            'scanner_type': self.active_scanner.__class__.__name__,
+            'supports_auto_scan': hasattr(self.active_scanner, 'start_auto_detection')
+        }
+
+    def capture_fingerprint(self) -> Optional[str]:
+        """Capture fingerprint and return as base64 string"""
+        if not self.active_scanner or not self.active_scanner.is_connected:
+            logging.error("No active scanner available")
+            return None
+
+        with self.scan_lock:
+            try:
+                image_bytes = self.active_scanner.capture_fingerprint()
+                if image_bytes:
+                    return base64.b64encode(image_bytes).decode('utf-8')
+                return None
+            except Exception as e:
+                logging.error(f"Error capturing fingerprint: {e}")
+                return None
+
+    def start_auto_scan(self, callback, interval=1.0):
+        """Start automatic scanning in background thread"""
+        if self.auto_scan_active:
+            logging.warning("Auto-scan already active")
+            return
+
+        self.auto_scan_active = True
+        self.auto_scan_thread = threading.Thread(
+            target=self._auto_scan_worker,
+            args=(callback, interval),
+            daemon=True
+        )
+        self.auto_scan_thread.start()
+        logging.info("Auto-scan started")
+
+    def stop_auto_scan(self):
+        """Stop automatic scanning"""
+        self.auto_scan_active = False
+        if self.auto_scan_thread and self.auto_scan_thread.is_alive():
+            self.auto_scan_thread.join(timeout=3)
+        logging.info("Auto-scan stopped")
+
+    def _auto_scan_worker(self, callback, interval):
+        """Background worker for automatic scanning"""
+        while self.auto_scan_active:
+            try:
+                fingerprint_data = self.capture_fingerprint()
+                if fingerprint_data:
+                    callback(fingerprint_data)
+                    time.sleep(interval * 2)  # Wait longer after successful capture
+                else:
+                    time.sleep(interval)
+            except Exception as e:
+                logging.error(f"Error in auto-scan: {e}")
+                time.sleep(interval)
+
+    def disconnect_all(self):
+        """Disconnect all scanners"""
+        for scanner in self.scanners:
+            try:
+                scanner.disconnect()
+            except Exception as e:
+                logging.error(f"Error disconnecting {scanner.__class__.__name__}: {e}")
+
+
+# Global scanner manager
+scanner_manager = ScannerManager()
+
+
+class OpenCVFingerprintProcessor:
+    """
+    Fingerprint processing using OpenCV for image processing and feature extraction
+    """
+
+    def __init__(self):
+        # Initialize ORB detector for feature extraction
+        self.orb = cv2.ORB_create(nfeatures=500)
+
+        # Initialize FLANN matcher for feature matching
+        FLANN_INDEX_LSH = 6
+        index_params = dict(algorithm=FLANN_INDEX_LSH,
+                            table_number=6,
+                            key_size=12,
+                            multi_probe_level=1)
+        search_params = dict(checks=50)
+        self.flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    def preprocess_image(self, image_data: bytes) -> np.ndarray:
+        """
+        Preprocess fingerprint image for better feature extraction
+        """
+        # Convert bytes to numpy array
+        nparr = np.frombuffer(image_data, np.uint8)
+        image = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+
+        if image is None:
+            raise ValueError("Invalid image data")
+
+        # Resize image to standard size
+        image = cv2.resize(image, (256, 256))
+
+        # Apply histogram equalization to improve contrast
+        image = cv2.equalizeHist(image)
+
+        # Apply Gaussian blur to reduce noise
+        image = cv2.GaussianBlur(image, (3, 3), 0)
+
+        # Apply morphological operations to enhance ridges
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+
+        return image
+
+    def extract_features(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Extract keypoints and descriptors from preprocessed fingerprint image
+        """
+        # Detect keypoints and compute descriptors
+        keypoints, descriptors = self.orb.detectAndCompute(image, None)
+
+        if descriptors is None:
+            raise ValueError("No features could be extracted from the image")
+
+        # Convert keypoints to serializable format
+        keypoints_data = []
+        for kp in keypoints:
+            keypoints_data.append({
+                'x': float(kp.pt[0]),
+                'y': float(kp.pt[1]),
+                'angle': float(kp.angle),
+                'response': float(kp.response),
+                'octave': int(kp.octave),
+                'size': float(kp.size)
+            })
+
+        return keypoints_data, descriptors
+
+    def calculate_quality_score(self, image: np.ndarray, keypoints: List[Dict]) -> float:
+        """
+        Calculate quality score based on image properties and feature count
+        """
+        # Image contrast (standard deviation of pixel intensities)
+        contrast = np.std(image)
+        contrast_score = min(contrast / 50.0, 1.0)  # Normalize to 0-1
+
+        # Feature density (number of keypoints per area)
+        area = image.shape[0] * image.shape[1]
+        density = len(keypoints) / (area / 10000)  # Per 100x100 pixel area
+        density_score = min(density / 5.0, 1.0)  # Normalize to 0-1
+
+        # Image sharpness using Laplacian variance
+        laplacian_var = cv2.Laplacian(image, cv2.CV_64F).var()
+        sharpness_score = min(laplacian_var / 1000.0, 1.0)  # Normalize to 0-1
+
+        # Combined quality score (weighted average)
+        quality = (contrast_score * 0.3 + density_score * 0.4 + sharpness_score * 0.3) * 100
+
+        return max(30.0, min(95.0, quality))  # Ensure score is between 30-95%
+
+    def create_template(self, image_data: bytes) -> Dict[str, Any]:
+        """
+        Create fingerprint template from image data
+        """
+        # Preprocess image
+        processed_image = self.preprocess_image(image_data)
+
+        # Extract features
+        keypoints, descriptors = self.extract_features(processed_image)
+
+        # Calculate quality score
+        quality_score = self.calculate_quality_score(processed_image, keypoints)
+
+        # Create template
+        template = {
+            'keypoints': keypoints,
+            'descriptors': descriptors.tolist(),
+            'image_shape': processed_image.shape,
+            'quality_score': quality_score,
+            'feature_count': len(keypoints),
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+
+        return template
+
+    def match_templates(self, template1: Dict[str, Any], template2: Dict[str, Any]) -> float:
+        """
+        Match two fingerprint templates and return confidence score
+        """
+        try:
+            # Convert descriptors back to numpy arrays
+            desc1 = np.array(template1['descriptors'], dtype=np.uint8)
+            desc2 = np.array(template2['descriptors'], dtype=np.uint8)
+
+            # Ensure we have enough descriptors for matching
+            if len(desc1) < 10 or len(desc2) < 10:
+                return 0.0
+
+            # Match descriptors using FLANN
+            matches = self.flann.knnMatch(desc1, desc2, k=2)
+
+            # Apply Lowe's ratio test to filter good matches
+            good_matches = []
+            for match_pair in matches:
+                if len(match_pair) == 2:
+                    m, n = match_pair
+                    if m.distance < 0.7 * n.distance:
+                        good_matches.append(m)
+
+            # Calculate confidence based on number of good matches
+            match_ratio = len(good_matches) / min(len(desc1), len(desc2))
+            confidence = min(match_ratio * 100, 95.0)
+
+            # Additional validation based on spatial consistency
+            if len(good_matches) >= 10:
+                kp1 = template1['keypoints']
+                kp2 = template2['keypoints']
+
+                # Get matched keypoint coordinates
+                src_pts = np.float32([kp1[m.queryIdx]['x'], kp1[m.queryIdx]['y']]
+                                     for m in good_matches).reshape(-1, 1, 2)
+                dst_pts = np.float32([kp2[m.trainIdx]['x'], kp2[m.trainIdx]['y']]
+                                     for m in good_matches).reshape(-1, 1, 2)
+
+                # Find homography to validate spatial consistency
+                if len(src_pts) >= 4:
+                    _, mask = cv2.findHomography(src_pts, dst_pts,
+                                                 cv2.RANSAC, 5.0)
+                    if mask is not None:
+                        inliers = np.sum(mask)
+                        spatial_consistency = inliers / len(mask)
+                        confidence *= spatial_consistency
+
+            return confidence
+
+        except Exception as e:
+            print(f"Error matching templates: {e}")
+            return 0.0
+
+    def encode_template(self, template: Dict[str, Any]) -> bytes:
+        """
+        Encode template to bytes for database storage
+        """
+        template_json = json.dumps(template, ensure_ascii=False)
+        return template_json.encode('utf-8')
+
+    def decode_template(self, template_bytes: bytes) -> Dict[str, Any]:
+        """
+        Decode template from bytes
+        """
+        template_json = template_bytes.decode('utf-8')
+        return json.loads(template_json)
+
+
+# Initialize fingerprint processor
+fp_processor = OpenCVFingerprintProcessor()
+
+
+def initialize_scanners():
+    """Initialize available scanners"""
+    global scanner_manager
+
+    # Add different scanner types in order of preference
+    scanner_manager.add_scanner(DigitalPersonaScanner())
+    scanner_manager.add_scanner(FutronicScanner())
+    scanner_manager.add_scanner(WebcamFingerprint())  # Fallback for testing
+
+    # Try to connect
+    results = scanner_manager.connect_scanners()
+    logging.info(f"Scanner connection results: {results}")
+
+    return any(results.values())
+
+
 with app.app_context():
     db.create_all()
+
+
+# Initialize scanners on startup
+@app.before_request
+def setup_scanners():
+    if initialize_scanners():
+        logging.info("Biometric scanners initialized successfully")
+    else:
+        logging.warning("No biometric scanners connected - using mock mode")
+
+
+
+@app.route('/api/scanner/status')
+def scanner_status():
+    """Get scanner connection status"""
+    return jsonify(scanner_manager.get_active_scanner_info())
+
+
+@app.route('/api/scanner/capture', methods=['POST'])
+def capture_from_scanner():
+    """Capture fingerprint from connected scanner"""
+    fingerprint_data = scanner_manager.capture_fingerprint()
+    if fingerprint_data:
+        return jsonify({
+            'success': True,
+            'fingerprint_data': fingerprint_data,
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Failed to capture fingerprint from scanner'
+        }), 500
+
+
+@app.route('/api/scanner/start-auto', methods=['POST'])
+def start_auto_scan():
+    """Start automatic scanning mode"""
+
+    def scan_callback(fingerprint_data):
+        logging.info(f"Auto-captured fingerprint at {datetime.now()}")
+        # Store the captured data temporarily
+        # You could implement WebSocket here to push data to frontend
+
+    scanner_manager.start_auto_scan(scan_callback, interval=0.5)
+    return jsonify({'success': True, 'message': 'Auto-scan started'})
+
+
+@app.route('/api/scanner/stop-auto', methods=['POST'])
+def stop_auto_scan():
+    """Stop automatic scanning mode"""
+    scanner_manager.stop_auto_scan()
+    return jsonify({'success': True, 'message': 'Auto-scan stopped'})
 
 
 @app.route("/")
@@ -188,6 +755,89 @@ def lookup_student():
     })
 
 
+@app.route("/api/enroll-fingerprint", methods=["POST"])
+def enroll_fingerprint():
+    """
+    Enroll fingerprint using OpenCV processing
+    """
+    try:
+        data = request.json
+        student_id = data.get('student_id')
+        fingerprint_data = data.get('fingerprint_data')
+
+        if not student_id or not fingerprint_data:
+            return jsonify({'error': 'Student ID and fingerprint data required'}), 400
+
+        # Get student
+        student = db.session.get(Student, student_id)
+        if not student:
+            return jsonify({'error': 'Student not found'}), 404
+
+        # Check if student already has fingerprint enrolled
+        existing_template = db.session.execute(
+            select(FingerprintTemplate).where(
+                FingerprintTemplate.student_id == student_id,
+                FingerprintTemplate.is_active == True
+            )
+        ).scalar()
+
+        if existing_template:
+            return jsonify({'error': 'Student already has fingerprint enrolled'}), 400
+
+        # Decode base64 image data
+        try:
+            image_bytes = base64.b64decode(fingerprint_data)
+        except Exception:
+            return jsonify({'error': 'Invalid fingerprint image data'}), 400
+
+        # Process fingerprint and create template
+        template = fp_processor.create_template(image_bytes)
+
+        # Check quality threshold
+        if template['quality_score'] < 40.0:
+            return jsonify({
+                'error': 'Fingerprint quality too low. Please try again.',
+                'quality_score': template['quality_score']
+            }), 400
+
+        # Create template hash for deduplication
+        template_bytes = fp_processor.encode_template(template)
+        template_hash = hashlib.sha256(template_bytes).hexdigest()
+
+        # Check for duplicate templates
+        duplicate = db.session.execute(
+            select(FingerprintTemplate).where(
+                FingerprintTemplate.template_hash == template_hash
+            )
+        ).scalar()
+
+        if duplicate:
+            return jsonify({'error': 'This fingerprint is already enrolled'}), 400
+
+        # Save template to database
+        fingerprint_template = FingerprintTemplate(
+            student_id=student_id,
+            template_data=template_bytes,
+            template_hash=template_hash,
+            quality_score=Decimal(str(template['quality_score']))
+        )
+
+        db.session.add(fingerprint_template)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': 'Fingerprint enrolled successfully',
+            'quality_score': template['quality_score'],
+            'feature_count': template['feature_count']
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Enrollment failed: {str(e)}'}), 500
+
+
+
 @app.route("/verification")
 def verification():
     # Live verification page
@@ -198,6 +848,129 @@ def verification():
     ).scalars().all()
 
     return render_template("verification.html", active_exams=active_exams)
+
+
+@app.route("/api/verify-fingerprint", methods=["POST"])
+def verify_fingerprint():
+    """
+    Verify fingerprint against enrolled templates
+    """
+    try:
+        data = request.json
+        exam_id = data.get('exam_id')
+        fingerprint_data = data.get('fingerprint_data')
+
+        if not exam_id or not fingerprint_data:
+            return jsonify({'error': 'Exam ID and fingerprint data required'}), 400
+
+        # Get exam
+        exam = db.session.get(Exam, exam_id)
+        if not exam:
+            return jsonify({'error': 'Exam not found'}), 404
+
+        # Decode fingerprint data
+        try:
+            image_bytes = base64.b64decode(fingerprint_data)
+        except Exception:
+            return jsonify({'error': 'Invalid fingerprint data'}), 400
+
+        # Create template for verification
+        verify_template = fp_processor.create_template(image_bytes)
+
+        if verify_template['quality_score'] < 30.0:
+            return jsonify({
+                'success': False,
+                'status': 'failed',
+                'message': 'Poor fingerprint quality. Please try again.'
+            })
+
+        # Get all enrolled templates
+        enrolled_templates = db.session.execute(
+            select(FingerprintTemplate).where(
+                FingerprintTemplate.is_active == True
+            ).join(Student).join(ExamRegistration).where(
+                ExamRegistration.exam_id == exam_id
+            )
+        ).scalars().all()
+
+        best_match = None
+        best_confidence = 0.0
+
+        # Compare against all enrolled templates
+        for template_record in enrolled_templates:
+            stored_template = fp_processor.decode_template(template_record.template_data)
+            confidence = fp_processor.match_templates(verify_template, stored_template)
+
+            if confidence > best_confidence:
+                best_confidence = confidence
+                best_match = template_record
+
+        # Verification threshold
+        VERIFICATION_THRESHOLD = 60.0
+
+        if best_match and best_confidence >= VERIFICATION_THRESHOLD:
+            # Check for duplicate verification
+            existing_verification = db.session.execute(
+                select(VerificationAttempt).where(
+                    VerificationAttempt.exam_id == exam_id,
+                    VerificationAttempt.student_id == best_match.student_id,
+                    VerificationAttempt.verification_status == 'success'
+                )
+            ).scalar()
+
+            if existing_verification:
+                return jsonify({
+                    'success': False,
+                    'status': 'duplicate',
+                    'message': f'Student {best_match.student.full_name} already verified for this exam'
+                })
+
+            # Record successful verification
+            verification = VerificationAttempt(
+                exam_id=exam_id,
+                student_id=best_match.student_id,
+                verification_status='success',
+                confidence_score=Decimal(str(best_confidence)),
+                template_matched=best_match.id
+            )
+
+            db.session.add(verification)
+            db.session.commit()
+
+            return jsonify({
+                'success': True,
+                'student': {
+                    'full_name': best_match.student.full_name,
+                    'registration_number': best_match.student.registration_number,
+                    'department': best_match.student.department
+                },
+                'confidence': best_confidence
+            })
+        else:
+            # Record failed verification
+            verification = VerificationAttempt(
+                exam_id=exam_id,
+                student_id=None,
+                verification_status='failed',
+                confidence_score=Decimal(str(best_confidence)) if best_confidence > 0 else None
+            )
+
+            db.session.add(verification)
+            db.session.commit()
+
+            return jsonify({
+                'success': False,
+                'status': 'failed',
+                'message': 'Fingerprint not recognized. Please ensure you are registered for this exam.'
+            })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'status': 'error',
+            'message': f'Verification failed: {str(e)}'
+        }), 500
 
 
 @app.route("/exams")
@@ -219,7 +992,6 @@ def exam_management():
         })
 
     return render_template('exam_management.html', exam_data=exam_data)
-
 
 
 @app.route('/api/create-exam', methods=['POST'])
@@ -309,5 +1081,28 @@ def register_student_for_exam():
         return jsonify({'error': str(e)}), 500
 
 
+# Cleanup function for graceful shutdown
+@app.teardown_appcontext
+def cleanup_scanners(error):
+    """Cleanup scanners on app shutdown"""
+    if error:
+        logging.error(f"App error: {error}")
+    # Don't disconnect scanners on every request - only on actual shutdown
+
+def shutdown_scanners():
+    """Call this on application shutdown"""
+    scanner_manager.stop_auto_scan()
+    scanner_manager.disconnect_all()
+    logging.info("All scanners disconnected")
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    try:
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    except KeyboardInterrupt:
+        logging.info("Shutting down application...")
+        shutdown_scanners()
+    except Exception as e:
+        logging.error(f"Application error: {e}")
+        shutdown_scanners()
+    finally:
+        logging.info("Application shutdown complete")
