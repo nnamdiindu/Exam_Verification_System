@@ -115,9 +115,13 @@ class VerificationAttempt(db.Model):
 with app.app_context():
     db.create_all()
 
-
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
+    return render_template("login.html")
+
+
+@app.route("/dashboard")
+def dashboard():
     #Main Dashboard
     stats = {
         'total_students': db.session.execute(
@@ -150,7 +154,7 @@ def index():
 
     recent_verifications = db.session.execute(stmt).all()
 
-    return render_template("index.html", stats=stats, recent_verifications=recent_verifications)
+    return render_template("dashboard.html", stats=stats, recent_verifications=recent_verifications)
 
 
 @app.route("/enrollment")
