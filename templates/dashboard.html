@@ -6,7 +6,7 @@
     <h1 class="mb-4">Dashboard</h1>
     
     <!-- Statistics Cards -->
-     {% if not current_user.id == 3 %}
+     {% if current_user.id != 3 %}
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="card bg-primary text-white">
@@ -41,6 +41,8 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <p>Nothing for you</p>
     {% endif %}
     
     <!-- Recent Activity -->
