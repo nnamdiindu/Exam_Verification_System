@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import Optional, List
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, url_for
-from flask_login import UserMixin, LoginManager, current_user
+from flask_login import UserMixin, LoginManager, current_user, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean, Numeric, LargeBinary, Date, Time, func, select, \
     distinct
@@ -147,8 +147,10 @@ def login():
         username = data["username"]
         # password = data["password"]
 
-        user = db.session.execute(select(User).where(User.email == username.lower()))
+        result = db.session.execute(db.select(User).where(User.email == username.lower()))
+        user = result.scalars().first()
         if user:
+            login_user(user)
             return jsonify({
                 "success": True,
                 "redirect_url": url_for("dashboard")  # dashboard route
@@ -159,6 +161,10 @@ def login():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for("index"))
 
 @app.route("/dashboard")
 def dashboard():
@@ -193,12 +199,22 @@ def dashboard():
     ).limit(5)
 
     recent_verifications = db.session.execute(stmt).all()
-
     return render_template("dashboard.html",
                            stats=stats,
                            recent_verifications=recent_verifications,
                            current_user=current_user)
 
+@app.route("/register-course")
+def register_course():
+    return None
+
+@app.route("/courses")
+def view_courses():
+    return None
+
+@app.route("/results")
+def view_result():
+    return None
 
 @app.route("/enrollment")
 def enrollment():
