@@ -3,11 +3,13 @@ from datetime import datetime, timezone, date, time
 from decimal import Decimal
 from typing import Optional, List
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, url_for
+from flask_login import UserMixin, LoginManager, current_user
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean, Numeric, LargeBinary, Date, Time, func, select, \
     distinct
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from werkzeug.utils import redirect
 
 app = Flask(__name__)
 
@@ -15,6 +17,9 @@ load_dotenv()
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DB_URI")
 app.secret_key = os.environ.get("SECRET_KEY")
+
+login_manager = LoginManager()
+login_manager.init_app(app)
 
 class Base(DeclarativeBase):
     pass
@@ -112,12 +117,47 @@ class VerificationAttempt(db.Model):
     matched_template: Mapped[Optional["FingerprintTemplate"]] = relationship(
         back_populates="verification_attempts")
 
+
+class User(UserMixin, db.Model):
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
+    password: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.get_or_404(User, user_id)
+
+
 with app.app_context():
     db.create_all()
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
     return render_template("login.html")
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    try:
+        data = request.json
+
+        username = data["username"]
+        # password = data["password"]
+
+        user = db.session.execute(select(User).where(User.email == username.lower()))
+        if user:
+            return jsonify({
+                "success": True,
+                "redirect_url": url_for("dashboard")  # dashboard route
+            })
+        else:
+            return jsonify({"success": False, "error": "Invalid credentials"})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route("/dashboard")
@@ -154,7 +194,10 @@ def dashboard():
 
     recent_verifications = db.session.execute(stmt).all()
 
-    return render_template("dashboard.html", stats=stats, recent_verifications=recent_verifications)
+    return render_template("dashboard.html",
+                           stats=stats,
+                           recent_verifications=recent_verifications,
+                           current_user=current_user)
 
 
 @app.route("/enrollment")
