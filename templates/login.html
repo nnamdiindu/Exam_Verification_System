@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Portal</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.0/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.10.0/font/bootstrap-icons.min.css"
+        rel="stylesheet">
     <style>
         body {
             background: linear-gradient(135deg, var(--bs-success) 0%, #0f5132 100%);
@@ -33,6 +35,7 @@
                 opacity: 0;
                 transform: translateY(30px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -138,11 +141,11 @@
             font-size: 1.5rem;
         }
 
-        .form-floating > label {
+        .form-floating>label {
             color: #6c757d;
         }
 
-        .form-floating > .form-control:focus ~ label {
+        .form-floating>.form-control:focus~label {
             color: var(--bs-success);
         }
 
@@ -150,18 +153,19 @@
             .login-wrapper {
                 padding: 1rem;
             }
-            
+
             .role-tab {
                 padding: 0.5rem 0.25rem;
                 font-size: 0.875rem;
             }
-            
+
             .role-icon {
                 font-size: 1rem;
             }
         }
     </style>
 </head>
+
 <body>
     <div class="container-fluid login-wrapper">
         <div class="row justify-content-center w-100">
@@ -203,7 +207,8 @@
                             </div>
 
                             <div class="form-floating mb-3 password-field">
-                                <input type="password" class="form-control" id="password" placeholder="Password" required>
+                                <input type="password" class="form-control" id="password" placeholder="Password"
+                                    required>
                                 <button type="button" class="password-toggle" onclick="togglePassword()">
                                     <i class="bi bi-eye" id="passwordIcon"></i>
                                 </button>
@@ -241,7 +246,8 @@
                                 <i class="bi bi-info-circle-fill me-2 mt-1"></i>
                                 <div>
                                     <strong class="role-title">Admin Access:</strong>
-                                    <div class="role-description">Full system management and configuration capabilities.</div>
+                                    <div class="role-description">Full system management and configuration capabilities.
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -262,7 +268,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
     <script>
         let currentRole = 'admin';
-        
+
         const roleInfos = {
             admin: {
                 icon: 'bi-person-gear',
@@ -283,7 +289,7 @@
 
         // Handle role selection
         document.querySelectorAll('.role-tab').forEach(tab => {
-            tab.addEventListener('click', function() {
+            tab.addEventListener('click', function () {
                 const role = this.dataset.role;
                 selectRole(role);
             });
@@ -291,28 +297,28 @@
 
         function selectRole(role) {
             currentRole = role;
-            
+
             // Update active state
             document.querySelectorAll('.role-tab').forEach(tab => {
                 tab.classList.remove('active');
                 tab.setAttribute('aria-selected', 'false');
             });
-            
+
             const activeTab = document.querySelector(`[data-role="${role}"]`);
             activeTab.classList.add('active');
             activeTab.setAttribute('aria-selected', 'true');
-            
+
             // Update role info
             const roleInfo = roleInfos[role];
             const roleInfoElement = document.querySelector('.role-info');
             const iconElement = roleInfoElement.querySelector('i');
             const titleElement = roleInfoElement.querySelector('.role-title');
             const descriptionElement = roleInfoElement.querySelector('.role-description');
-            
+
             iconElement.className = `bi ${roleInfo.icon} me-2 mt-1`;
             titleElement.textContent = roleInfo.title;
             descriptionElement.textContent = roleInfo.description;
-            
+
             // Clear form
             document.getElementById('loginForm').reset();
         }
@@ -320,7 +326,7 @@
         function togglePassword() {
             const passwordInput = document.getElementById('password');
             const passwordIcon = document.getElementById('passwordIcon');
-            
+
             if (passwordInput.type === 'password') {
                 passwordInput.type = 'text';
                 passwordIcon.className = 'bi bi-eye-slash';
@@ -342,69 +348,93 @@
                     </div>
                 </div>
             `;
-            
+
             const toastContainer = document.createElement('div');
             toastContainer.innerHTML = toast;
             toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
             document.body.appendChild(toastContainer);
-            
+
             const toastElement = new bootstrap.Toast(toastContainer.querySelector('.toast'));
             toastElement.show();
-            
+
             setTimeout(() => {
                 document.body.removeChild(toastContainer);
             }, 5000);
         }
 
         // Handle form submission
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        document.getElementById('loginForm').addEventListener('submit', function (e) {
             e.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            if (username && password) {
-                const submitBtn = this.querySelector('button[type="submit"]');
-                const btnText = submitBtn.querySelector('.btn-text');
-                const spinner = submitBtn.querySelector('.spinner-border');
-                
-                // Show loading state
-                btnText.classList.add('d-none');
-                spinner.classList.remove('d-none');
-                submitBtn.disabled = true;
-                
-                // Simulate login process
-                setTimeout(() => {
-                    // Show success message
-                    const successAlert = document.createElement('div');
-                    successAlert.className = 'alert alert-success alert-dismissible fade show';
-                    successAlert.innerHTML = `
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        <strong>Login successful!</strong> Welcome back, ${username}.
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    `;
-                    
-                    document.querySelector('.card-body').insertBefore(successAlert, document.getElementById('loginForm'));
-                    
+
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner-border');
+
+            // Show loading state
+            btnText.classList.add('d-none');
+            spinner.classList.remove('d-none');
+            submitBtn.disabled = true;
+
+            fetch("/api/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Redirect if Flask sends redirect_url
+                        if (data.redirect_url) {
+                            window.location.href = data.redirect_url;
+                            return; // stop further execution
+                        }
+
+                        // fallback success alert if no redirect_url provided
+                        const successAlert = document.createElement('div');
+                        successAlert.className = 'alert alert-success alert-dismissible fade show';
+                        successAlert.innerHTML = `
+                <i class="bi bi-check-circle-fill me-2"></i>
+                <strong>Login successful!</strong> Welcome back, ${username}.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+                        document.querySelector('.card-body').insertBefore(successAlert, document.getElementById('loginForm'));
+
+                        setTimeout(() => {
+                            if (successAlert.parentNode) successAlert.remove();
+                        }, 3000);
+                    } else {
+                        // Show error alert
+                        const errorAlert = document.createElement('div');
+                        errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+                        errorAlert.innerHTML = `
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                <strong>Login failed!</strong> ${data.error || "Invalid credentials"}.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+                        document.querySelector('.card-body').insertBefore(errorAlert, document.getElementById('loginForm'));
+
+                        setTimeout(() => {
+                            if (errorAlert.parentNode) errorAlert.remove();
+                        }, 3000);
+                    }
+                })
+                .catch(error => {
+                    alert('Error: ' + error);
+                })
+                .finally(() => {
                     // Reset button
                     btnText.classList.remove('d-none');
                     spinner.classList.add('d-none');
                     submitBtn.disabled = false;
-                    
-                    // Auto-hide success message
-                    setTimeout(() => {
-                        if (successAlert.parentNode) {
-                            successAlert.remove();
-                        }
-                    }, 3000);
-                    
-                }, 1500);
-            }
+                });
         });
 
         // Add form validation feedback
         document.querySelectorAll('#loginForm input[required]').forEach(input => {
-            input.addEventListener('blur', function() {
+            input.addEventListener('blur', function () {
                 if (this.value.trim() === '') {
                     this.classList.add('is-invalid');
                 } else {
@@ -412,14 +442,16 @@
                     this.classList.add('is-valid');
                 }
             });
-            
-            input.addEventListener('input', function() {
+
+            input.addEventListener('input', function () {
                 if (this.classList.contains('is-invalid') && this.value.trim() !== '') {
                     this.classList.remove('is-invalid');
                     this.classList.add('is-valid');
                 }
             });
         });
+
     </script>
 </body>
+
 </html>
