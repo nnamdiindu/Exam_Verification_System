@@ -87,7 +87,7 @@
                 </li>
                 {% else %}
                 <li class="nav-item">
-                    <a class="nav-link {% if request.endpoint == 'register_course' %}active{% endif %}" href="{{ url_for('register_course') }}">
+                    <a class="nav-link {% if request.endpoint == 'register_course' %}active{% endif %}" href="{{ url_for('course_registration') }}">
                         <i class="fas fa-file-import me-2"></i> Register Course
                     </a>
                 </li>
