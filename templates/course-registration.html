@@ -20,7 +20,6 @@
                             <th>Title</th>
                             <th>Date & Time</th>
                             <th>Venue</th>
-                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -35,26 +34,6 @@
                                     exam.duration_minutes }}min)</small>
                             </td>
                             <td>{{ exam.venue or 'TBA' }}</td>
-
-                            <td>
-                                <div class="btn-group btn-group-sm">
-                                    {% if exam.status == 'scheduled' %}
-                                    <button class="btn btn-success" onclick="updateExamStatus({{ exam.id }}, 'active')"
-                                        title="Start Exam">
-                                        <i class="fas fa-play"></i>
-                                    </button>
-                                    {% elif exam.status == 'active' %}
-                                    <button class="btn btn-warning"
-                                        onclick="updateExamStatus({{ exam.id }}, 'completed')" title="Complete Exam">
-                                        <i class="fas fa-stop"></i>
-                                    </button>
-                                    {% endif %}
-                                    <button class="btn btn-primary" onclick="registerStudentsModal({{ exam.id }})"
-                                        title="Register Students">
-                                        <i class="fas fa-user-plus"></i>
-                                    </button>
-                                </div>
-                            </td>
                         </tr>
                         {% else %}
                         <tr>
