@@ -273,10 +273,6 @@ def course_registration():
 
     return render_template("course-registration.html", exams=available_courses, exam_data=registered_courses)
 
-@app.route("/courses")
-def view_courses():
-    return render_template("course.html", current_user=current_user)
-
 @app.route("/results")
 def view_result():
     return render_template("result.html", current_user=current_user)
