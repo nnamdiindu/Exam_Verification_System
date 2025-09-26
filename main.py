@@ -3,7 +3,7 @@ from datetime import datetime, timezone, date, time
 from decimal import Decimal
 from typing import Optional, List
 from dotenv import load_dotenv
-from flask import Flask, render_template, request, jsonify, url_for
+from flask import Flask, render_template, request, jsonify, url_for, flash
 from flask_login import UserMixin, LoginManager, current_user, login_user, logout_user
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Integer, String, ForeignKey, DateTime, Boolean, Numeric, LargeBinary, Date, Time, func, select, \
@@ -204,17 +204,79 @@ def dashboard():
                            recent_verifications=recent_verifications,
                            current_user=current_user)
 
-@app.route("/register-course")
-def register_course():
-    return None
+
+@app.route("/register-course", methods=["GET", "POST"])
+def course_registration():
+    exams = Exam.query.order_by(Exam.exam_date.desc()).all()
+
+    if request.method == "POST":
+        selected_exam_codes = request.form.getlist("selected_exam_codes")
+
+        # Check if any exams were selected
+        if not selected_exam_codes:
+            flash("Please select at least one exam to register for.", "warning")
+            return render_template("course-registration.html", exams=exams)
+
+        try:
+            # Get exam IDs from the selected exam codes
+            selected_exams = Exam.query.filter(Exam.exam_code.in_(selected_exam_codes)).all()
+            exam_ids = [exam.id for exam in selected_exams]
+
+            # Check for existing registrations to prevent duplicates
+            existing_registrations = ExamRegistration.query.filter(
+                ExamRegistration.student_id == current_user.id,
+                ExamRegistration.exam_id.in_(exam_ids)
+            ).all()
+
+            existing_exam_ids = [reg.exam_id for reg in existing_registrations]
+            new_exam_ids = [exam_id for exam_id in exam_ids if exam_id not in existing_exam_ids]
+
+            if existing_registrations:
+                existing_exam_codes = [exam.exam_code for exam in selected_exams if exam.id in existing_exam_ids]
+                flash(f"You are already registered for: {', '.join(existing_exam_codes)}", "warning")
+
+            if not new_exam_ids:
+                flash("No new registrations to process.", "info")
+                return render_template("course-registration.html", exams=exams)
+
+            # Create new registrations
+            successful_registrations = 0
+            for exam in selected_exams:
+                if exam.id in new_exam_ids:
+                    # Create new ExamRegistration record
+                    registration = ExamRegistration(
+                        student_id=current_user.id,
+                        exam_id=exam.id,
+                        registration_date=datetime.now(timezone.utc),
+                        seat_number=None  # Will be assigned later by admin
+                    )
+                    db.session.add(registration)
+                    successful_registrations += 1
+
+            # Commit all changes to database
+            db.session.commit()
+
+            flash(f"Successfully registered for {successful_registrations} exam(s)!", "success")
+            print(f"Student {current_user.id} registered for {successful_registrations} exams")
+
+            # Redirect to prevent form resubmission
+            return redirect(url_for('course_registration'))
+
+        except Exception as e:
+            # Rollback in case of error
+            db.session.rollback()
+            flash(f"Registration failed: {str(e)}", "error")
+            print(f"Registration error: {str(e)}")
+
+    return render_template("course-registration.html", exams=exams)
 
 @app.route("/courses")
 def view_courses():
-    return None
+    return render_template("course.html", current_user=current_user)
 
 @app.route("/results")
 def view_result():
-    return None
+    return render_template("result.html", current_user=current_user)
 
 @app.route("/enrollment")
 def enrollment():
