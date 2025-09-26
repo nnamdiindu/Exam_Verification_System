@@ -207,7 +207,10 @@ def dashboard():
 
 @app.route("/register-course", methods=["GET", "POST"])
 def course_registration():
-    exams = Exam.query.order_by(Exam.exam_date.desc()).all()
+    available_courses = Exam.query.order_by(Exam.exam_date.desc()).all()
+    registered_courses = ExamRegistration.query.filter_by(
+        student_id=current_user.id
+    ).join(Exam).order_by(ExamRegistration.registration_date.desc()).all()
 
     if request.method == "POST":
         selected_exam_codes = request.form.getlist("selected_exam_codes")
@@ -215,7 +218,7 @@ def course_registration():
         # Check if any exams were selected
         if not selected_exam_codes:
             flash("Please select at least one exam to register for.", "warning")
-            return render_template("course-registration.html", exams=exams)
+            return render_template("course-registration.html", exams=available_courses)
 
         try:
             # Get exam IDs from the selected exam codes
@@ -237,7 +240,7 @@ def course_registration():
 
             if not new_exam_ids:
                 flash("No new registrations to process.", "info")
-                return render_template("course-registration.html", exams=exams)
+                return render_template("course-registration.html", exams=available_courses)
 
             # Create new registrations
             successful_registrations = 0
@@ -268,7 +271,7 @@ def course_registration():
             flash(f"Registration failed: {str(e)}", "error")
             print(f"Registration error: {str(e)}")
 
-    return render_template("course-registration.html", exams=exams)
+    return render_template("course-registration.html", exams=available_courses, exam_data=registered_courses)
 
 @app.route("/courses")
 def view_courses():
