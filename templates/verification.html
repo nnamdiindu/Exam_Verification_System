@@ -3,89 +3,525 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="mb-4">Live Verification Center</h1>
-    
+    <!-- Header -->
     <div class="row">
-        <div class="col-md-4">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h5>Exam Selection</h5>
-                </div>
-                <div class="card-body">
-                    <select class="form-select mb-3" id="examSelect">
-                        <option value="">Select Active Exam</option>
-                        {% for exam in active_exams %}
-                        <option value="{{ exam.id }}">{{ exam.exam_code }} - {{ exam.exam_title }} ({{ exam.venue }})</option>
-                        {% endfor %}
-                    </select>
-                    <button class="btn btn-success w-100" onclick="startVerificationMode()">
-                        <i class="fas fa-play me-2"></i>Start Verification
-                    </button>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header">
-                    <h5>Session Statistics</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <h3 class="text-success" id="verifiedCount">0</h3>
-                            <small class="text-muted">Verified</small>
+        <div class="col-12">
+            <div class="card border-0 shadow-lg mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <div class="card-body py-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="display-5 fw-bold mb-0">Live Verification Center</h1>
+                            <p class="lead mb-0">NEXUS-7 Biometric Authentication System</p>
                         </div>
-                        <div class="col-6">
-                            <h3 class="text-danger" id="failedCount">0</h3>
-                            <small class="text-muted">Failed</small>
+                        <div class="text-end">
+                            <div class="badge bg-light text-dark fs-6" id="sessionStatus">No Active Session</div>
+                            <div class="small mt-1" id="sessionTime">--:--:--</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Verification Scanner</h5>
+    </div>
+
+    <div class="row g-4">
+        <!-- Control Panel -->
+        <div class="col-lg-4">
+            <!-- Exam Selection -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Exam Selection</h5>
+                </div>
+                <div class="card-body">
+                    <select class="form-select mb-3" id="examSelect">
+                        <option value="">Select Active Exam</option>
+                        {% for exam in active_exams %}
+                        <option value="{{ exam.id }}" 
+                                data-title="{{ exam.exam_title }}"
+                                data-code="{{ exam.exam_code }}"
+                                data-venue="{{ exam.venue }}"
+                                data-date="{{ exam.exam_date }}"
+                                data-time="{{ exam.start_time }}">
+                            {{ exam.exam_code }} - {{ exam.exam_title }} 
+                            {% if exam.venue %}({{ exam.venue }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-success" onclick="startVerificationSession()" id="startBtn">
+                            <i class="fas fa-play me-2"></i>Start Verification
+                        </button>
+                        <button class="btn btn-danger" onclick="endVerificationSession()" id="endBtn" disabled>
+                            <i class="fas fa-stop me-2"></i>End Session
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Session Statistics -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Session Statistics</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="border rounded p-2 bg-light">
+                                <h2 class="text-success mb-1" id="verifiedCount">0</h2>
+                                <small class="text-muted">Verified</small>
+                            </div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="border rounded p-2 bg-light">
+                                <h2 class="text-danger mb-1" id="failedCount">0</h2>
+                                <small class="text-muted">Failed</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 bg-light">
+                                <h2 class="text-warning mb-1" id="duplicateCount">0</h2>
+                                <small class="text-muted">Duplicates</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 bg-light">
+                                <h2 class="text-primary mb-1" id="successRate">0%</h2>
+                                <small class="text-muted">Success Rate</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="progress mb-2" style="height: 8px;">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: 0%" id="successProgressBar"></div>
+                    </div>
+                    <small class="text-muted d-block text-center" id="totalAttempts">Total Attempts: 0</small>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card shadow">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="fas fa-tools me-2"></i>Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="refreshStats()" id="refreshBtn">
+                            <i class="fas fa-sync-alt me-2"></i>Refresh Stats
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="showAttendanceReport()" id="reportBtn" disabled>
+                            <i class="fas fa-file-alt me-2"></i>Attendance Report
+                        </button>
+                        <button class="btn btn-outline-warning btn-sm" onclick="testScanner()">
+                            <i class="fas fa-fingerprint me-2"></i>Test Scanner
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Verification Scanner -->
+        <div class="col-lg-8">
+            <div class="card shadow h-100" style="background: linear-gradient(145deg, #1a1a2e, #16213e); color: white;">
+                <div class="card-header bg-transparent border-bottom border-info">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0 text-info">
+                            <i class="fas fa-fingerprint me-2"></i>Biometric Verification Scanner
+                        </h5>
+                        <div class="scanner-status" id="scannerStatusIndicator">
+                            <i class="fas fa-circle text-secondary me-1"></i>
+                            <span class="small">Idle</span>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body text-center">
-                    <div class="fingerprint-scanner" id="verificationScanner" onclick="scanForVerification()">
-                        <i class="fas fa-fingerprint fa-4x text-muted" id="verificationIcon"></i>
+                    <!-- Scanner Display -->
+                    <div class="scanner-display mb-4" id="verificationDisplay">
+                        <div class="terminal-text" id="displayText">
+                            > SELECT AN EXAM TO BEGIN VERIFICATION...
+                        </div>
                     </div>
-                    <p class="text-muted" id="scannerInstructions">Select an exam to begin verification</p>
-                    
+
+                    <!-- Fingerprint Scanner Pad -->
+                    <div class="verification-pad-container">
+                        <div class="fingerprint-verification-pad" id="verificationScanner" onclick="scanForVerification()">
+                            <div class="scan-overlay" id="scanOverlay"></div>
+                            <i class="fas fa-fingerprint fa-5x" id="verificationIcon"></i>
+                            <div class="scan-animation" id="scanAnimation"></div>
+                        </div>
+                        <p class="mt-3 text-muted" id="scannerInstructions">Select an exam to begin verification</p>
+                    </div>
+
+                    <!-- Verification Results -->
                     <div id="verificationResult" class="mt-4" style="display: none;">
-                        <!-- Verification results will appear here -->
+                        <!-- Results will be displayed here -->
+                    </div>
+
+                    <!-- Recent Verifications -->
+                    <div class="mt-4">
+                        <h6 class="text-info mb-3">Recent Verifications</h6>
+                        <div id="recentVerifications" class="verification-log">
+                            <div class="text-muted small">No recent verifications</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Attendance Report Modal -->
+<div class="modal fade" id="attendanceReportModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Attendance Report</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="attendanceReportBody">
+                <!-- Report content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="downloadReport()">Download PDF</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="statusToast" class="toast align-items-center border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage"></div>
+            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+.scanner-display {
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #17a2b8;
+    border-radius: 10px;
+    padding: 20px;
+    font-family: 'Courier New', monospace;
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+}
+
+.terminal-text {
+    color: #17a2b8;
+    font-size: 16px;
+    line-height: 1.4;
+    text-align: left;
+}
+
+.fingerprint-verification-pad {
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, #001122, #002244);
+    border: 4px solid #6c757d;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 20px auto;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.fingerprint-verification-pad:hover {
+    transform: scale(1.05);
+}
+
+.fingerprint-verification-pad.ready {
+    border-color: #17a2b8;
+    box-shadow: 0 0 30px rgba(23, 162, 184, 0.4);
+    animation: readyPulse 2s ease-in-out infinite;
+}
+
+.fingerprint-verification-pad.scanning {
+    border-color: #ffc107;
+    box-shadow: 0 0 40px rgba(255, 193, 7, 0.6);
+    animation: scanPulse 1s ease-in-out infinite;
+}
+
+.fingerprint-verification-pad.success {
+    border-color: #28a745;
+    box-shadow: 0 0 40px rgba(40, 167, 69, 0.7);
+}
+
+.fingerprint-verification-pad.error {
+    border-color: #dc3545;
+    box-shadow: 0 0 40px rgba(220, 53, 69, 0.7);
+}
+
+.fingerprint-verification-pad.duplicate {
+    border-color: #fd7e14;
+    box-shadow: 0 0 40px rgba(253, 126, 20, 0.7);
+}
+
+.scan-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: conic-gradient(from 0deg, transparent, rgba(23, 162, 184, 0.3), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.fingerprint-verification-pad.scanning .scan-overlay {
+    opacity: 1;
+    animation: rotate 2s linear infinite;
+}
+
+.scan-animation {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80%;
+    height: 80%;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    opacity: 0;
+}
+
+.fingerprint-verification-pad.scanning .scan-animation {
+    opacity: 1;
+    border-color: rgba(255, 193, 7, 0.5);
+    animation: scanRing 1.5s ease-in-out infinite;
+}
+
+.scanner-status {
+    font-size: 0.875rem;
+}
+
+.verification-log {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.verification-entry {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    border-left: 4px solid #6c757d;
+    font-size: 0.875rem;
+}
+
+.verification-entry.success {
+    border-left-color: #28a745;
+}
+
+.verification-entry.failed {
+    border-left-color: #dc3545;
+}
+
+.verification-entry.duplicate {
+    border-left-color: #fd7e14;
+}
+
+@keyframes readyPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes scanPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+@keyframes rotate {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes scanRing {
+    0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let selectedExam = null;
 let verificationActive = false;
-let sessionStats = {verified: 0, failed: 0};
+let sessionStats = {
+    verified: 0, 
+    failed: 0, 
+    duplicates: 0, 
+    totalAttempts: 0
+};
+let currentSessionId = null;
+let statsUpdateInterval = null;
 
-function startVerificationMode() {
-    const examId = document.getElementById('examSelect').value;
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('statusToast');
+    const toastMessage = document.getElementById('toastMessage');
+    const toastBootstrap = new bootstrap.Toast(toast);
+    
+    toast.className = `toast align-items-center border-0 text-bg-${type}`;
+    toastMessage.textContent = message;
+    toastBootstrap.show();
+}
+
+function updateScannerDisplay(message) {
+    const displayElement = document.getElementById('displayText');
+    displayElement.textContent = `> ${message}`;
+}
+
+function updateScannerStatus(status, color = 'secondary') {
+    const indicator = document.getElementById('scannerStatusIndicator');
+    indicator.innerHTML = `<i class="fas fa-circle text-${color} me-1"></i><span class="small">${status}</span>`;
+}
+
+function startVerificationSession() {
+    const examSelect = document.getElementById('examSelect');
+    const examId = examSelect.value;
+    
     if (!examId) {
-        alert('Please select an exam first');
+        showToast('Please select an exam first', 'warning');
         return;
     }
     
-    selectedExam = examId;
-    verificationActive = true;
-    document.getElementById('scannerInstructions').textContent = 'Ready for verification - Click scanner to verify fingerprint';
-    document.getElementById('verificationIcon').className = 'fas fa-fingerprint fa-4x text-primary';
+    const selectedOption = examSelect.options[examSelect.selectedIndex];
+    const examData = {
+        id: examId,
+        title: selectedOption.dataset.title,
+        code: selectedOption.dataset.code,
+        venue: selectedOption.dataset.venue
+    };
+    
+    const startBtn = document.getElementById('startBtn');
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting...';
+    
+    fetch('/api/start-verification-session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({exam_id: examId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            selectedExam = examData;
+            verificationActive = true;
+            currentSessionId = data.session_id;
+            
+            // Update UI
+            document.getElementById('sessionStatus').textContent = 'Active Session';
+            document.getElementById('sessionStatus').className = 'badge bg-success fs-6';
+            
+            updateScannerDisplay(`VERIFICATION SESSION STARTED - ${data.exam_code}`);
+            updateScannerStatus('Ready', 'info');
+            
+            document.getElementById('scannerInstructions').textContent = 
+                'Place finger on scanner to verify attendance';
+            document.getElementById('verificationIcon').style.color = '#17a2b8';
+            document.getElementById('verificationScanner').classList.add('ready');
+            
+            // Enable/disable buttons
+            document.getElementById('endBtn').disabled = false;
+            document.getElementById('reportBtn').disabled = false;
+            
+            showToast(`Verification started for ${data.exam_code}`, 'success');
+            
+            // Start stats update interval
+            statsUpdateInterval = setInterval(refreshStats, 5000);
+            
+        } else {
+            showToast('Failed to start session: ' + (data.message || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(error => {
+        showToast('Error starting session: ' + error, 'danger');
+    })
+    .finally(() => {
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-play me-2"></i>Start Verification';
+    });
+}
+
+function endVerificationSession() {
+    if (!verificationActive || !selectedExam) {
+        showToast('No active session to end', 'warning');
+        return;
+    }
+    
+    const endBtn = document.getElementById('endBtn');
+    endBtn.disabled = true;
+    endBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Ending...';
+    
+    fetch('/api/end-verification-session', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({exam_id: selectedExam.id})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Reset UI
+            verificationActive = false;
+            selectedExam = null;
+            currentSessionId = null;
+            
+            document.getElementById('sessionStatus').textContent = 'No Active Session';
+            document.getElementById('sessionStatus').className = 'badge bg-light text-dark fs-6';
+            
+            updateScannerDisplay('SESSION ENDED - SELECT EXAM TO START NEW SESSION');
+            updateScannerStatus('Idle', 'secondary');
+            
+            document.getElementById('scannerInstructions').textContent = 
+                'Select an exam to begin verification';
+            document.getElementById('verificationIcon').style.color = '#6c757d';
+            document.getElementById('verificationScanner').classList.remove('ready');
+            
+            // Reset buttons
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('endBtn').disabled = true;
+            document.getElementById('reportBtn').disabled = true;
+            
+            // Clear stats interval
+            if (statsUpdateInterval) {
+                clearInterval(statsUpdateInterval);
+                statsUpdateInterval = null;
+            }
+            
+            showToast(`Session ended. ${data.session_summary.successful_verifications} students verified.`, 'info');
+        } else {
+            showToast('Failed to end session: ' + (data.message || 'Unknown error'), 'danger');
+        }
+    })
+    .catch(error => {
+        showToast('Error ending session: ' + error, 'danger');
+    })
+    .finally(() => {
+        endBtn.disabled = false;
+        endBtn.innerHTML = '<i class="fas fa-stop me-2"></i>End Session';
+    });
 }
 
 function scanForVerification() {
-    if (!verificationActive) {
-        alert('Please start verification mode first');
+    if (!verificationActive || !selectedExam) {
+        showToast('Please start a verification session first', 'warning');
         return;
     }
     
@@ -93,84 +529,378 @@ function scanForVerification() {
     const icon = document.getElementById('verificationIcon');
     const result = document.getElementById('verificationResult');
     
+    // Start scanning animation
+    scanner.classList.remove('ready', 'success', 'error', 'duplicate');
     scanner.classList.add('scanning');
-    icon.className = 'fas fa-spinner fa-spin fa-4x text-primary';
+    icon.style.color = '#ffc107';
     result.style.display = 'none';
     
-    // Generate mock fingerprint data for verification
-    const mockFingerprint = btoa('verification_fingerprint_' + Date.now());
+    updateScannerDisplay('CAPTURING BIOMETRIC DATA...');
+    updateScannerStatus('Scanning', 'warning');
     
-    // Simulate verification process
-    setTimeout(() => {
-        fetch('/api/verify-fingerprint', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                exam_id: selectedExam,
-                fingerprint_data: mockFingerprint
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            scanner.classList.remove('scanning');
+    showToast('Scanning... Keep finger steady', 'info');
+    
+    fetch('/api/verify-fingerprint', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({exam_id: selectedExam.id})
+    })
+    .then(response => response.json())
+    .then(data => {
+        scanner.classList.remove('scanning');
+        
+        if (data.success && data.status === 'verified') {
+            // Successful verification
+            scanner.classList.add('success');
+            icon.style.color = '#28a745';
             
-            if (data.success) {
-                // Successful verification
-                icon.className = 'fas fa-check-circle fa-4x text-success';
-                result.innerHTML = `
-                    <div class="alert alert-success">
-                        <h5><i class="fas fa-check-circle me-2"></i>Verification Successful!</h5>
-                        <p><strong>Student:</strong> ${data.student.full_name}</p>
-                        <p><strong>Reg Number:</strong> ${data.student.registration_number}</p>
-                        <p><strong>Department:</strong> ${data.student.department}</p>
-                        <p><strong>Confidence:</strong> ${data.confidence.toFixed(1)}%</p>
-                    </div>
-                `;
-                sessionStats.verified++;
-                document.getElementById('verifiedCount').textContent = sessionStats.verified;
-            } else {
-                // Failed verification
-                icon.className = 'fas fa-times-circle fa-4x text-danger';
-                let message = data.message;
-                let alertClass = 'alert-danger';
-                
-                if (data.status === 'duplicate') {
-                    alertClass = 'alert-warning';
-                }
-                
-                result.innerHTML = `
-                    <div class="alert ${alertClass}">
-                        <h5><i class="fas fa-exclamation-triangle me-2"></i>Verification ${data.status === 'duplicate' ? 'Duplicate' : 'Failed'}</h5>
-                        <p>${message}</p>
-                    </div>
-                `;
-                
-                if (data.status !== 'duplicate') {
-                    sessionStats.failed++;
-                    document.getElementById('failedCount').textContent = sessionStats.failed;
-                }
-            }
+            updateScannerDisplay(`STUDENT VERIFIED - WELCOME ${data.student.name.toUpperCase()}`);
+            updateScannerStatus('Verified', 'success');
             
-            result.style.display = 'block';
-            
-            // Reset scanner after 3 seconds
-            setTimeout(() => {
-                icon.className = 'fas fa-fingerprint fa-4x text-primary';
-                result.style.display = 'none';
-            }, 3000);
-        })
-        .catch(error => {
-            scanner.classList.remove('scanning');
-            icon.className = 'fas fa-exclamation-triangle fa-4x text-warning';
             result.innerHTML = `
-                <div class="alert alert-danger">
-                    <h5>System Error</h5>
-                    <p>Error during verification: ${error}</p>
+                <div class="alert alert-success">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-check-circle fa-2x me-3 text-success"></i>
+                        <div>
+                            <h5 class="mb-1">Verification Successful!</h5>
+                            <small class="text-muted">Confidence: ${data.confidence_score.toFixed(1)}%</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-sm-6"><strong>Student:</strong> ${data.student.name}</div>
+                        <div class="col-sm-6"><strong>Reg Number:</strong> ${data.student.registration_number}</div>
+                        <div class="col-sm-6"><strong>Department:</strong> ${data.student.department}</div>
+                        <div class="col-sm-6"><strong>Seat:</strong> ${data.student.seat_number || 'Not assigned'}</div>
+                    </div>
                 </div>
             `;
-            result.style.display = 'block';
-        });
-    }, 2000);
+            
+            showToast(`Welcome ${data.student.name}!`, 'success');
+            
+        } else if (data.status === 'duplicate') {
+            // Duplicate verification
+            scanner.classList.add('duplicate');
+            icon.style.color = '#fd7e14';
+            
+            updateScannerDisplay('DUPLICATE VERIFICATION DETECTED');
+            updateScannerStatus('Duplicate', 'warning');
+            
+            result.innerHTML = `
+                <div class="alert alert-warning">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-exclamation-triangle fa-2x me-3 text-warning"></i>
+                        <div>
+                            <h5 class="mb-1">Already Verified</h5>
+                            <small class="text-muted">First verified: ${new Date(data.first_verification_time).toLocaleTimeString()}</small>
+                        </div>
+                    </div>
+                    <hr>
+                    <p><strong>Student:</strong> ${data.student.name}</p>
+                    <p class="mb-0">${data.message}</p>
+                </div>
+            `;
+            
+            showToast('Student already verified for this exam', 'warning');
+            
+        } else if (data.status === 'not_registered') {
+            // Not registered for exam
+            scanner.classList.add('error');
+            icon.style.color = '#dc3545';
+            
+            updateScannerDisplay('STUDENT NOT REGISTERED FOR THIS EXAM');
+            updateScannerStatus('Not Registered', 'danger');
+            
+            result.innerHTML = `
+                <div class="alert alert-danger">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-ban fa-2x me-3 text-danger"></i>
+                        <div>
+                            <h5 class="mb-1">Not Registered</h5>
+                        </div>
+                    </div>
+                    <hr>
+                    <p><strong>Student:</strong> ${data.student.name}</p>
+                    <p class="mb-0">${data.message}</p>
+                </div>
+            `;
+            
+            showToast('Student not registered for this exam', 'danger');
+            
+        } else {
+            // Failed verification
+            scanner.classList.add('error');
+            icon.style.color = '#dc3545';
+            
+            updateScannerDisplay('FINGERPRINT NOT RECOGNIZED');
+            updateScannerStatus('Failed', 'danger');
+            
+            result.innerHTML = `
+                <div class="alert alert-danger">
+                    <div class="d-flex align-items-center mb-2">
+                        <i class="fas fa-times-circle fa-2x me-3 text-danger"></i>
+                        <div>
+                            <h5 class="mb-1">Verification Failed</h5>
+                        </div>
+                    </div>
+                    <hr>
+                    <p class="mb-0">${data.message}</p>
+                </div>
+            `;
+            
+            showToast('Fingerprint not recognized', 'danger');
+        }
+        
+        result.style.display = 'block';
+        
+        // Reset scanner after 4 seconds
+        setTimeout(() => {
+            scanner.classList.remove('success', 'error', 'duplicate');
+            scanner.classList.add('ready');
+            icon.style.color = '#17a2b8';
+            result.style.display = 'none';
+            updateScannerDisplay(`READY FOR NEXT VERIFICATION - ${selectedExam.code}`);
+            updateScannerStatus('Ready', 'info');
+        }, 4000);
+        
+        // Refresh stats
+        refreshStats();
+        
+    })
+    .catch(error => {
+        scanner.classList.remove('scanning');
+        scanner.classList.add('error');
+        icon.style.color = '#dc3545';
+        
+        updateScannerDisplay('SYSTEM ERROR - VERIFICATION FAILED');
+        updateScannerStatus('Error', 'danger');
+        
+        result.innerHTML = `
+            <div class="alert alert-danger">
+                <h5><i class="fas fa-exclamation-triangle me-2"></i>System Error</h5>
+                <p class="mb-0">Error during verification: ${error}</p>
+            </div>
+        `;
+        result.style.display = 'block';
+        
+        showToast('System error during verification', 'danger');
+        
+        setTimeout(() => {
+            scanner.classList.remove('error');
+            scanner.classList.add('ready');
+            icon.style.color = '#17a2b8';
+            result.style.display = 'none';
+            updateScannerStatus('Ready', 'info');
+        }, 3000);
+    });
 }
+
+function refreshStats() {
+    if (!verificationActive || !selectedExam) {
+        return;
+    }
+    
+    fetch(`/api/verification-session-stats/${selectedExam.id}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.session_active) {
+            // Update statistics
+            document.getElementById('verifiedCount').textContent = data.successful_verifications;
+            document.getElementById('failedCount').textContent = data.failed_attempts;
+            document.getElementById('duplicateCount').textContent = data.duplicate_attempts;
+            document.getElementById('successRate').textContent = data.success_rate + '%';
+            document.getElementById('totalAttempts').textContent = `Total Attempts: ${data.total_attempts}`;
+            
+            // Update progress bar
+            document.getElementById('successProgressBar').style.width = data.success_rate + '%';
+            
+            // Update session time
+            document.getElementById('sessionTime').textContent = 
+                formatDuration(data.session_duration_minutes);
+            
+            // Update recent verifications
+            updateRecentVerifications(data.recent_verifications);
+        }
+    })
+    .catch(error => {
+        console.error('Error refreshing stats:', error);
+    });
+}
+
+function updateRecentVerifications(verifications) {
+    const container = document.getElementById('recentVerifications');
+    
+    if (verifications.length === 0) {
+        container.innerHTML = '<div class="text-muted small">No recent verifications</div>';
+        return;
+    }
+    
+    let html = '';
+    verifications.forEach(verification => {
+        const statusClass = verification.status === 'success' ? 'success' : 
+                          verification.status === 'duplicate' ? 'duplicate' : 'failed';
+        const statusIcon = verification.status === 'success' ? 'check' : 
+                         verification.status === 'duplicate' ? 'exclamation-triangle' : 'times';
+        
+        html += `
+            <div class="verification-entry ${statusClass}">
+                <div>
+                    <i class="fas fa-${statusIcon} me-2"></i>
+                    <strong>${verification.student_name}</strong>
+                    <div class="small text-muted">${verification.registration_number}</div>
+                </div>
+                <div class="text-end">
+                    <div class="small">${new Date(verification.timestamp).toLocaleTimeString()}</div>
+                    ${verification.confidence > 0 ? `<div class="small">${verification.confidence}%</div>` : ''}
+                </div>
+            </div>
+        `;
+    });
+    
+    container.innerHTML = html;
+}
+
+function showAttendanceReport() {
+    if (!selectedExam) {
+        showToast('No active exam selected', 'warning');
+        return;
+    }
+    
+    fetch(`/api/exam-attendance-report/${selectedExam.id}`)
+    .then(response => response.json())
+    .then(data => {
+        const modal = new bootstrap.Modal(document.getElementById('attendanceReportModal'));
+        const body = document.getElementById('attendanceReportBody');
+        
+        let html = `
+            <div class="mb-4">
+                <h6>Exam: ${data.exam.title} (${data.exam.code})</h6>
+                <p class="text-muted mb-0">Date: ${new Date(data.exam.date).toLocaleDateString()}</p>
+                <p class="text-muted">Venue: ${data.exam.venue || 'Not specified'}</p>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="text-center border rounded p-2">
+                        <h4 class="text-primary">${data.statistics.total_registered}</h4>
+                        <small>Registered</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center border rounded p-2">
+                        <h4 class="text-success">${data.statistics.present}</h4>
+                        <small>Present</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center border rounded p-2">
+                        <h4 class="text-danger">${data.statistics.absent}</h4>
+                        <small>Absent</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center border rounded p-2">
+                        <h4 class="text-info">${data.statistics.attendance_percentage}%</h4>
+                        <small>Attendance</small>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Reg Number</th>
+                            <th>Name</th>
+                            <th>Department</th>
+                            <th>Seat</th>
+                            <th>Status</th>
+                            <th>Check-in Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+        
+        data.attendance_list.forEach(student => {
+            const statusBadge = student.is_present ? 
+                '<span class="badge bg-success">Present</span>' : 
+                '<span class="badge bg-danger">Absent</span>';
+            const checkInTime = student.attendance_details ? 
+                new Date(student.attendance_details.check_in_time).toLocaleTimeString() : 
+                '--';
+            
+            html += `
+                <tr>
+                    <td>${student.registration_number}</td>
+                    <td>${student.name}</td>
+                    <td>${student.department || 'N/A'}</td>
+                    <td>${student.seat_number || '--'}</td>
+                    <td>${statusBadge}</td>
+                    <td>${checkInTime}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        body.innerHTML = html;
+        modal.show();
+    })
+    .catch(error => {
+        showToast('Error loading attendance report: ' + error, 'danger');
+    });
+}
+
+function testScanner() {
+    updateScannerDisplay('TESTING SCANNER CONNECTION...');
+    
+    fetch('/api/scanner-status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.data.operational) {
+            updateScannerDisplay('SCANNER TEST SUCCESSFUL - HARDWARE OPERATIONAL');
+            showToast('Scanner test successful', 'success');
+        } else {
+            updateScannerDisplay('SCANNER TEST FAILED - HARDWARE NOT RESPONDING');
+            showToast('Scanner test failed', 'danger');
+        }
+    })
+    .catch(error => {
+        updateScannerDisplay('SCANNER TEST ERROR - CONNECTION FAILED');
+        showToast('Scanner test error: ' + error, 'danger');
+    });
+}
+
+function formatDuration(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00`;
+}
+
+function downloadReport() {
+    if (!selectedExam) {
+        showToast('No exam selected for report', 'warning');
+        return;
+    }
+    
+    // This would integrate with a PDF generation service
+    showToast('PDF download feature coming soon', 'info');
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    updateScannerDisplay('SELECT AN EXAM TO BEGIN VERIFICATION...');
+    
+    // Auto-refresh stats every 30 seconds if session is active
+    setInterval(() => {
+        if (verificationActive) {
+            refreshStats();
+        }
+    }, 30000);
+});
 </script>
 {% endblock %}

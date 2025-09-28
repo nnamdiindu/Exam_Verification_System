@@ -3,77 +3,358 @@
 
 {% block content %}
 <div class="container-fluid">
-    <h1 class="mb-4">Fingerprint Enrollment</h1>
-    
     <div class="row">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Student Information</h5>
+        <div class="col-12">
+            <div class="card border-0 shadow-lg" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <div class="card-body text-center py-4">
+                    <h1 class="display-4 fw-bold">{{ scanner_persona.name }} Biometric System</h1>
+                    <p class="lead">Advanced Fingerprint Authentication - Version {{ scanner_persona.version }}</p>
+                    <div class="scanner-status-indicator">
+                        {% if scanner_available %}
+                            <i class="fas fa-check-circle text-success me-2"></i>
+                            <span class="badge bg-success">Scanner Online</span>
+                        {% else %}
+                            <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                            <span class="badge bg-warning">Scanner Offline</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <!-- Student Information Panel -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100 shadow">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-graduate me-2"></i>Student Information
+                    </h5>
                 </div>
                 <div class="card-body">
                     <form id="studentForm">
                         <div class="mb-3">
-                            <label for="regNumber" class="form-label">Registration Number</label>
-                            <input type="text" class="form-control" id="regNumber" placeholder="2020/241155" required>
+                            <label for="regNumber" class="form-label fw-bold">Registration Number</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control form-control-lg" 
+                                       id="regNumber" placeholder="2020/241155" required>
+                                <button type="button" class="btn btn-success" onclick="lookupStudent()" id="lookupBtn">
+                                    <i class="fas fa-search me-2"></i>Lookup
+                                </button>
+                            </div>
                         </div>
-                        <button type="button" class="btn btn-success" onclick="lookupStudent()">
-                            <i class="fas fa-search me-2"></i>Lookup Student
-                        </button>
                     </form>
                     
+                    <!-- Student Details -->
                     <div id="studentInfo" class="mt-4" style="display: none;">
-                        <hr>
-                        <h6>Student Details</h6>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Name:</strong></div>
-                            <div class="col-sm-6" id="studentName"></div>
+                        <div class="alert alert-info">
+                            <h6 class="alert-heading"><i class="fas fa-user me-2"></i>Student Details</h6>
+                            <hr>
+                            <div class="row mb-2">
+                                <div class="col-sm-4 fw-bold">Name:</div>
+                                <div class="col-sm-8" id="studentName"></div>
+                            </div>
+                            <div class="row mb-2">
+                                <div class="col-sm-4 fw-bold">Department:</div>
+                                <div class="col-sm-8" id="studentDepartment"></div>
+                            </div>
+                            <div class="row">
+                                <div class="col-sm-4 fw-bold">Status:</div>
+                                <div class="col-sm-8" id="fingerprintStatus"></div>
+                            </div>
                         </div>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Department:</strong></div>
-                            <div class="col-sm-6" id="studentDepartment"></div>
-                        </div>
-                        <div class="row">
-                            <div class="col-sm-6"><strong>Current Status:</strong></div>
-                            <div class="col-sm-6" id="fingerprintStatus"></div>
+                    </div>
+
+                    <!-- System Status -->
+                    <div class="mt-4">
+                        <h6>Scanner System Status</h6>
+                        <div class="border rounded p-3" style="background: #f8f9fa;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>Hardware Status:</span>
+                                <span id="hardwareStatus" class="badge bg-secondary">Checking...</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>Scanner Type:</span>
+                                <span class="badge bg-info">{{ scanner_type|upper }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>Last Update:</span>
+                                <span id="lastUpdate" class="small text-muted">--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h5>Fingerprint Scanner</h5>
+
+        <!-- Scanner Interface Panel -->
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100 shadow" style="background: linear-gradient(145deg, #1a1a2e, #16213e); color: white;">
+                <div class="card-header bg-transparent border-bottom border-cyan">
+                    <h5 class="mb-0 text-cyan">
+                        <i class="fas fa-fingerprint me-2"></i>Biometric Scanner Interface
+                    </h5>
                 </div>
                 <div class="card-body text-center">
-                    <div class="fingerprint-scanner" id="scanner" onclick="startScanning()">
-                        <i class="fas fa-fingerprint fa-4x text-muted" id="scannerIcon"></i>
+                    <!-- Scanner Display -->
+                    <div class="scanner-display mb-4" id="scannerDisplay">
+                        <div class="terminal-text" id="displayText">
+                            > SYSTEM READY - AWAITING STUDENT DATA...
+                        </div>
                     </div>
-                    <p class="text-muted">Click to capture fingerprint</p>
-                    <div id="scanStatus" class="mt-3"></div>
-                    <button type="button" class="btn btn-success" id="enrollBtn" onclick="enrollFingerprint()" disabled>
-                        <i class="fas fa-save me-2"></i>Enroll Fingerprint
-                    </button>
+
+                    <!-- Fingerprint Capture Area -->
+                    <div class="fingerprint-capture-zone" id="captureZone">
+                        <div class="fingerprint-pad" id="fingerprintPad">
+                            <div class="scan-overlay" id="scanOverlay"></div>
+                            <i class="fas fa-fingerprint fa-4x" id="fingerprintIcon"></i>
+                        </div>
+                        <p class="mt-3 text-muted">Place finger on scanner when ready</p>
+                    </div>
+
+                    <!-- Scan Results -->
+                    <div id="scanResults" class="mt-4" style="display: none;">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="qualityScore">--</div>
+                                    <div class="metric-label">Quality</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="minutiaeCount">--</div>
+                                    <div class="metric-label">Minutiae</div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="confidence">--</div>
+                                    <div class="metric-label">Confidence</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="mt-4">
+                        <button type="button" class="btn btn-primary btn-lg me-3" 
+                                onclick="initiateScan()" id="scanBtn" disabled>
+                            <i class="fas fa-scan me-2"></i>Start Scan
+                        </button>
+                        <button type="button" class="btn btn-success btn-lg me-3" 
+                                onclick="enrollFingerprint()" id="enrollBtn" disabled>
+                            <i class="fas fa-save me-2"></i>Enroll
+                        </button>
+                        <button type="button" class="btn btn-warning btn-lg" onclick="resetSystem()">
+                            <i class="fas fa-redo me-2"></i>Reset
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Status Messages -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="statusToast" class="toast align-items-center border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage"></div>
+            <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+.scanner-display {
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid #00ffff;
+    border-radius: 8px;
+    padding: 20px;
+    font-family: 'Courier New', monospace;
+    min-height: 80px;
+    position: relative;
+    overflow: hidden;
+}
+
+.terminal-text {
+    color: #00ffff;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.fingerprint-pad {
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, #001122, #002244);
+    border: 4px solid #6c757d;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.fingerprint-pad:hover {
+    transform: scale(1.05);
+}
+
+.fingerprint-pad.ready {
+    border-color: #00ffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+.fingerprint-pad.scanning {
+    border-color: #ffc107;
+    box-shadow: 0 0 20px rgba(255, 193, 7, 0.5);
+    animation: pulse 1s infinite;
+}
+
+.fingerprint-pad.success {
+    border-color: #28a745;
+    box-shadow: 0 0 20px rgba(40, 167, 69, 0.5);
+}
+
+.fingerprint-pad.error {
+    border-color: #dc3545;
+    box-shadow: 0 0 20px rgba(220, 53, 69, 0.5);
+}
+
+.scan-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(0, 255, 255, 0.1) 50%,
+        transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.fingerprint-pad.scanning .scan-overlay {
+    opacity: 1;
+    animation: scan-sweep 2s linear infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+@keyframes scan-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.metric-card {
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 8px;
+    padding: 15px;
+}
+
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #00ffff;
+}
+
+.metric-label {
+    font-size: 0.875rem;
+    color: #adb5bd;
+}
+
+.text-cyan {
+    color: #00ffff !important;
+}
+
+.border-cyan {
+    border-color: #00ffff !important;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
 let currentStudent = null;
-let capturedFingerprint = null;
+let currentScanData = null;
+let scannerReady = false;
+
+// Initialize scanner status check
+document.addEventListener('DOMContentLoaded', function() {
+    checkScannerStatus();
+    setInterval(checkScannerStatus, 30000); // Check every 30 seconds
+});
+
+function checkScannerStatus() {
+    fetch('/api/scanner-status')
+        .then(response => response.json())
+        .then(data => {
+            const statusElement = document.getElementById('hardwareStatus');
+            const lastUpdateElement = document.getElementById('lastUpdate');
+            
+            if (data.data.operational) {
+                statusElement.className = 'badge bg-success';
+                statusElement.textContent = 'Online';
+                scannerReady = true;
+            } else {
+                statusElement.className = 'badge bg-danger';
+                statusElement.textContent = 'Offline';
+                scannerReady = false;
+            }
+            
+            lastUpdateElement.textContent = new Date().toLocaleTimeString();
+            updateScannerDisplay(data.message);
+        })
+        .catch(error => {
+            console.error('Scanner status check failed:', error);
+            document.getElementById('hardwareStatus').className = 'badge bg-danger';
+            document.getElementById('hardwareStatus').textContent = 'Error';
+        });
+}
+
+function updateScannerDisplay(message) {
+    const displayElement = document.getElementById('displayText');
+    displayElement.textContent = `> ${message}`;
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('statusToast');
+    const toastMessage = document.getElementById('toastMessage');
+    const toastBootstrap = new bootstrap.Toast(toast);
+    
+    // Set toast styling based on type
+    toast.className = `toast align-items-center border-0 text-bg-${type}`;
+    toastMessage.textContent = message;
+    
+    toastBootstrap.show();
+}
 
 function lookupStudent() {
-    const regNumber = document.getElementById('regNumber').value;
+    const regNumber = document.getElementById('regNumber').value.trim();
     if (!regNumber) {
-        alert('Please enter a registration number');
+        showToast('Please enter a registration number', 'warning');
         return;
     }
+    
+    const lookupBtn = document.getElementById('lookupBtn');
+    lookupBtn.disabled = true;
+    lookupBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Looking up...';
+    
+    updateScannerDisplay('SEARCHING STUDENT DATABASE...');
     
     fetch('/api/lookup-student', {
         method: 'POST',
@@ -83,83 +364,256 @@ function lookupStudent() {
     .then(response => response.json())
     .then(data => {
         if (data.error) {
-            alert(data.error);
+            showToast(data.error, 'danger');
             document.getElementById('studentInfo').style.display = 'none';
+            updateScannerDisplay('ERROR: STUDENT RECORD NOT FOUND');
+            currentStudent = null;
         } else {
             currentStudent = data;
             document.getElementById('studentName').textContent = `${data.first_name} ${data.last_name}`;
-            document.getElementById('studentDepartment').textContent = data.department;
-            document.getElementById('fingerprintStatus').innerHTML = data.has_fingerprint ? 
-                '<span class="badge bg-success">Enrolled</span>' : 
-                '<span class="badge bg-warning">Not Enrolled</span>';
+            document.getElementById('studentDepartment').textContent = data.department || 'N/A';
+            
+            const statusBadge = data.has_fingerprint ? 
+                '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Enrolled</span>' : 
+                '<span class="badge bg-warning"><i class="fas fa-exclamation-triangle me-1"></i>Not Enrolled</span>';
+            document.getElementById('fingerprintStatus').innerHTML = statusBadge;
+            
             document.getElementById('studentInfo').style.display = 'block';
+            
+            if (data.has_fingerprint) {
+                updateScannerDisplay('WARNING: BIOMETRIC DATA ALREADY EXISTS');
+                showToast('Student already has fingerprint enrolled', 'warning');
+                document.getElementById('scanBtn').disabled = true;
+            } else {
+                updateScannerDisplay('STUDENT VERIFIED - BIOMETRIC SCAN AUTHORIZED');
+                showToast('Student found! Ready for biometric enrollment', 'success');
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('fingerprintPad').classList.add('ready');
+            }
         }
     })
     .catch(error => {
-        alert('Error looking up student: ' + error);
+        showToast('Error looking up student: ' + error, 'danger');
+        updateScannerDisplay('SYSTEM ERROR - DATABASE CONNECTION FAILED');
+    })
+    .finally(() => {
+        lookupBtn.disabled = false;
+        lookupBtn.innerHTML = '<i class="fas fa-search me-2"></i>Lookup';
     });
 }
 
-function startScanning() {
+function initiateScan() {
     if (!currentStudent) {
-        alert('Please lookup a student first');
+        showToast('Please lookup a student first', 'warning');
         return;
     }
     
-    const scanner = document.getElementById('scanner');
-    const icon = document.getElementById('scannerIcon');
-    const status = document.getElementById('scanStatus');
+    if (!scannerReady) {
+        showToast('Scanner hardware not available', 'danger');
+        return;
+    }
     
-    scanner.classList.add('scanning');
-    icon.className = 'fas fa-spinner fa-spin fa-4x text-primary';
-    status.innerHTML = '<div class="text-primary">Scanning fingerprint...</div>';
+    const scanBtn = document.getElementById('scanBtn');
+    scanBtn.disabled = true;
+    scanBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Initiating...';
     
-    // Simulate fingerprint capture
-    setTimeout(() => {
-        scanner.classList.remove('scanning');
-        icon.className = 'fas fa-fingerprint fa-4x text-success';
-        status.innerHTML = '<div class="text-success"><i class="fas fa-check-circle me-2"></i>Fingerprint captured successfully</div>';
+    updateScannerDisplay('INITIATING BIOMETRIC CAPTURE SEQUENCE...');
+    
+    fetch('/api/initiate-scan', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({student_id: currentStudent.id})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'scanning_start') {
+            updateScannerDisplay(data.message);
+            showToast('Place your finger on the scanner', 'info');
+            startFingerprintCapture();
+        } else if (data.status === 'already_enrolled') {
+            updateScannerDisplay(data.message);
+            showToast('Student already enrolled', 'warning');
+            scanBtn.disabled = false;
+            scanBtn.innerHTML = '<i class="fas fa-scan me-2"></i>Start Scan';
+        }
+    })
+    .catch(error => {
+        showToast('Scan initiation failed: ' + error, 'danger');
+        scanBtn.disabled = false;
+        scanBtn.innerHTML = '<i class="fas fa-scan me-2"></i>Start Scan';
+    });
+}
+
+function startFingerprintCapture() {
+    const fingerprintPad = document.getElementById('fingerprintPad');
+    const fingerprintIcon = document.getElementById('fingerprintIcon');
+    
+    fingerprintPad.classList.remove('ready');
+    fingerprintPad.classList.add('scanning');
+    fingerprintIcon.style.color = '#ffc107';
+    
+    updateScannerDisplay('ANALYZING RIDGE PATTERNS AND MINUTIAE...');
+    showToast('Scanning... Keep finger steady', 'info');
+    
+    fetch('/api/capture-fingerprint', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({student_id: currentStudent.id})
+    })
+    .then(response => response.json())
+    .then(data => {
+        fingerprintPad.classList.remove('scanning');
         
-        // Generate mock fingerprint data
-        capturedFingerprint = btoa('mock_fingerprint_data_' + Date.now());
-        document.getElementById('enrollBtn').disabled = false;
-    }, 3000);
+        if (data.status === 'scanning_complete') {
+            fingerprintPad.classList.add('success');
+            fingerprintIcon.style.color = '#28a745';
+            
+            // Display scan results
+            document.getElementById('qualityScore').textContent = data.data.quality_score.toFixed(1) + '%';
+            document.getElementById('minutiaeCount').textContent = data.data.minutiae_count || '--';
+            document.getElementById('confidence').textContent = '95%'; // Mock confidence
+            document.getElementById('scanResults').style.display = 'block';
+            
+            currentScanData = data.data.scan_data;
+            
+            updateScannerDisplay(data.message);
+            showToast(`Scan successful! Quality: ${data.data.quality_score.toFixed(1)}%`, 'success');
+            
+            document.getElementById('enrollBtn').disabled = false;
+            
+        } else if (data.status === 'quality_low') {
+            fingerprintPad.classList.add('error');
+            fingerprintIcon.style.color = '#dc3545';
+            
+            updateScannerDisplay('SCAN QUALITY INSUFFICIENT - PLEASE RESCAN');
+            showToast(`Quality too low (${data.data.quality_score.toFixed(1)}%). Please rescan.`, 'warning');
+            
+            // Reset for retry
+            setTimeout(() => {
+                fingerprintPad.classList.remove('error');
+                fingerprintPad.classList.add('ready');
+                fingerprintIcon.style.color = '#00ffff';
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('scanBtn').innerHTML = '<i class="fas fa-scan me-2"></i>Retry Scan';
+            }, 3000);
+        }
+    })
+    .catch(error => {
+        fingerprintPad.classList.remove('scanning');
+        fingerprintPad.classList.add('error');
+        fingerprintIcon.style.color = '#dc3545';
+        
+        updateScannerDisplay('HARDWARE ERROR - SCAN FAILED');
+        showToast('Fingerprint capture failed: ' + error, 'danger');
+        
+        setTimeout(() => {
+            fingerprintPad.classList.remove('error');
+            fingerprintPad.classList.add('ready');
+            fingerprintIcon.style.color = '#00ffff';
+            document.getElementById('scanBtn').disabled = false;
+            document.getElementById('scanBtn').innerHTML = '<i class="fas fa-scan me-2"></i>Retry Scan';
+        }, 3000);
+    })
+    .finally(() => {
+        document.getElementById('scanBtn').disabled = false;
+        document.getElementById('scanBtn').innerHTML = '<i class="fas fa-scan me-2"></i>Start Scan';
+    });
 }
 
 function enrollFingerprint() {
-    if (!currentStudent || !capturedFingerprint) {
-        alert('Please capture a fingerprint first');
+    if (!currentStudent || !currentScanData) {
+        showToast('Please capture a fingerprint first', 'warning');
         return;
     }
+    
+    const enrollBtn = document.getElementById('enrollBtn');
+    enrollBtn.disabled = true;
+    enrollBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enrolling...';
+    
+    updateScannerDisplay('ENCRYPTING AND STORING BIOMETRIC DATA...');
+    showToast('Enrolling biometric data...', 'info');
+    
+    const qualityScore = parseFloat(document.getElementById('qualityScore').textContent) || 85.0;
     
     fetch('/api/enroll-fingerprint', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             student_id: currentStudent.id,
-            fingerprint_data: capturedFingerprint
+            scan_data: currentScanData,
+            quality_score: qualityScore
         })
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            alert(`Fingerprint enrolled successfully! Quality: ${data.quality_score.toFixed(1)}%`);
-            // Reset form
-            document.getElementById('studentForm').reset();
-            document.getElementById('studentInfo').style.display = 'none';
-            document.getElementById('scanStatus').innerHTML = '';
-            document.getElementById('scanner').classList.remove('scanning');
-            document.getElementById('scannerIcon').className = 'fas fa-fingerprint fa-4x text-muted';
-            document.getElementById('enrollBtn').disabled = true;
-            currentStudent = null;
-            capturedFingerprint = null;
+        if (data.status === 'enrollment_success') {
+            updateScannerDisplay(data.message);
+            showToast(`Enrollment successful for ${data.data.student_name}!`, 'success');
+            
+            // Update student info to show enrolled status
+            document.getElementById('fingerprintStatus').innerHTML = 
+                '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Enrolled</span>';
+            
+            // Auto-reset after success
+            setTimeout(() => {
+                resetSystem();
+            }, 3000);
+            
         } else {
-            alert('Error: ' + data.error);
+            updateScannerDisplay('ENROLLMENT FAILED - PLEASE RETRY OPERATION');
+            showToast('Enrollment failed: ' + (data.data?.error || 'Unknown error'), 'danger');
+            enrollBtn.disabled = false;
+            enrollBtn.innerHTML = '<i class="fas fa-save me-2"></i>Retry Enrollment';
         }
     })
     .catch(error => {
-        alert('Error enrolling fingerprint: ' + error);
+        updateScannerDisplay('SYSTEM ERROR - ENROLLMENT FAILED');
+        showToast('Enrollment error: ' + error, 'danger');
+        enrollBtn.disabled = false;
+        enrollBtn.innerHTML = '<i class="fas fa-save me-2"></i>Retry Enrollment';
     });
 }
+
+function resetSystem() {
+    // Reset form
+    document.getElementById('studentForm').reset();
+    document.getElementById('studentInfo').style.display = 'none';
+    
+    // Reset scanner interface
+    const fingerprintPad = document.getElementById('fingerprintPad');
+    const fingerprintIcon = document.getElementById('fingerprintIcon');
+    
+    fingerprintPad.className = 'fingerprint-pad';
+    fingerprintIcon.style.color = '#6c757d';
+    
+    // Reset results
+    document.getElementById('scanResults').style.display = 'none';
+    document.getElementById('qualityScore').textContent = '--';
+    document.getElementById('minutiaeCount').textContent = '--';
+    document.getElementById('confidence').textContent = '--';
+    
+    // Reset buttons
+    document.getElementById('scanBtn').disabled = true;
+    document.getElementById('scanBtn').innerHTML = '<i class="fas fa-scan me-2"></i>Start Scan';
+    document.getElementById('enrollBtn').disabled = true;
+    document.getElementById('enrollBtn').innerHTML = '<i class="fas fa-save me-2"></i>Enroll';
+    
+    // Reset variables
+    currentStudent = null;
+    currentScanData = null;
+    
+    // Reset scanner display
+    updateScannerDisplay('SYSTEM READY - AWAITING STUDENT DATA...');
+    showToast('System reset successfully', 'info');
+}
+
+// Add click handler for fingerprint pad
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('fingerprintPad').addEventListener('click', function() {
+        if (this.classList.contains('ready') && !document.getElementById('scanBtn').disabled) {
+            initiateScan();
+        }
+    });
+});
 </script>
 {% endblock %}
